@@ -6,6 +6,8 @@
 #import "common";
 #import "file_io_common";
 
+// Generates a .h file with all of the shader info defined in structs.
+
 
 
 // These values have to match values in the 
