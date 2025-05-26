@@ -1,0 +1,30 @@
+
+Color_TRANSPARENT ::   Color.{r=0.0, g=0.0, b=0.0, a=0.0};
+Color_White ::         Color.{r=1.0, g=1.0, b=1.0, a=1.0};
+Color_White_50 ::      Color.{r=1.0, g=1.0, b=1.0, a=0.5};
+Color_Black ::         Color.{r=0.0, g=0.0, b=0.0, a=1.0};
+Color_Black_75 ::      Color.{r=0.0, g=0.0, b=0.0, a=0.75};
+Color_Black_50 ::      Color.{r=0.0, g=0.0, b=0.0, a=0.5};
+Color_Black_25 ::      Color.{r=0.0, g=0.0, b=0.0, a=0.25};
+Color_Gray ::          Color.{r=0.6, g=0.6, b=0.6, a=1.0};
+Color_Light_Gray ::    Color.{r=0.8, g=0.8, b=0.8, a=1.0};
+Color_Light_Gray_30 :: Color.{r=0.8, g=0.8, b=0.8, a=0.3};
+Color_Light_Gray_10 :: Color.{r=0.8, g=0.8, b=0.8, a=0.1};
+Color_Dark_Gray ::     Color.{r=0.2, g=0.2, b=0.2, a=1.0};
+Color_Red ::           Color.{r=1.0, g=0.0, b=0.0, a=1.0};
+Color_Red_50 ::        Color.{r=1.0, g=0.0, b=0.0, a=0.5};
+Color_Red_25 ::        Color.{r=1.0, g=0.0, b=0.0, a=0.25};
+Color_Green ::         Color.{r=0.0, g=1.0, b=0.0, a=1.0};
+Color_Green_50 ::      Color.{r=0.0, g=1.0, b=0.0, a=0.5};
+Color_Green_25 ::      Color.{r=0.0, g=1.0, b=0.0, a=0.25};
+Color_Blue ::          Color.{r=0.0, g=0.0, b=1.0, a=1.0};
+Color_Blue_50 ::       Color.{r=0.0, g=0.0, b=1.0, a=0.5};
+Color_Yellow ::        Color.{r=1.0, g=1.0, b=0.0, a=1.0};
+Color_Yellow_50 ::     Color.{r=1.0, g=1.0, b=0.0, a=0.5};
+Color_Yellow_25 ::     Color.{r=1.0, g=1.0, b=0.0, a=0.25};
+Color_Magenta ::       Color.{r=1.0, g=0.0, b=1.0, a=1.0};
+Color_Magenta_50 ::    Color.{r=1.0, g=0.0, b=1.0, a=0.5};
+Color_Cyan ::          Color.{r=0.0, g=1.0, b=1.0, a=1.0};
+Color_Cyan_50 ::       Color.{r=0.0, g=1.0, b=1.0, a=0.5};
+Color_Navy ::          Color.{r=0.0, g=0.2, b=0.4, a=1.0};
+
