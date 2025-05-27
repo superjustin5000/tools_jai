@@ -1,16 +1,41 @@
-
-
-#scope_file
-
 #import "Basic";
 #import "external/stb_truetype";
 
 #import "common";
-
-#import "font";
 #import "image";
-
 #import "atlas";
+
+
+
+MIN_FONT_GLYPH :: 32;
+MAX_FONT_GLYPH :: 126;
+GLYPH_COUNT :: (MAX_FONT_GLYPH - MIN_FONT_GLYPH) + 1; //+1 so that 32 is inclusive in the counts
+
+
+Glyph :: struct {
+    value: u8;
+    atlas_uv: Rect;
+    vertex_index: u16;
+    rect: Rect;
+    advance: f32;
+    texture: Texture;
+}
+
+Font :: struct {
+    id: u32;
+    atlas: Texture;
+    pixel_size: u16;
+    height: f32;
+    line_height: f32;
+    ascent: f32;
+    descent: f32;
+    line_gap: f32;
+    glyph_padding: u16;
+    glyphs: [GLYPH_COUNT]Glyph;
+    kerning: [GLYPH_COUNT][GLYPH_COUNT]f32;
+    scale_factor: f32;
+}
+
 
 SPACE :: 32;        //ascii value for space
 SPACE_REPLACE :: 77;//ascii value for 'M'
@@ -100,7 +125,6 @@ font_get_glyph :: (font: *Font, font_info: *stbtt_fontinfo, code: u8, scale_fact
 
 
 
-#scope_export
 
 
 

@@ -1,5 +1,4 @@
 
-#scope_file
 
 #import "Basic";
 
@@ -7,6 +6,11 @@
 #import "file_io_common";
 #import "image";
 #import "deflate";
+
+
+
+
+#scope_file
 
 
 PNG_Header :: struct {

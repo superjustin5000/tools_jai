@@ -1,16 +1,12 @@
 #import "Basic";
 #import "String";
 #import "Math";
-
 #import "Hash_Table";
 
 #import "common";
 #import "file_io_common";
-#import "deflate";
-
 #import "model";
-
-
+#import "deflate";
 
 FBX_Object_Type :: enum {
     Root;
