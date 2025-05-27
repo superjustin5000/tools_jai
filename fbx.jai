@@ -8,6 +8,15 @@
 #import "model";
 #import "deflate";
 
+
+/*
+FBX sources:
+- The blender post everyone uses: https://code.blender.org/2013/08/fbx-binary-file-format-specification/
+- A cool blog post by Banex: https://banexdevblog.wordpress.com/2014/06/23/a-quick-tutorial-about-the-fbx-ascii-format/
+- Open FBX : https://github.com/nem0/OpenFBX
+*/
+
+
 FBX_Object_Type :: enum {
     Root;
     Geometry;
