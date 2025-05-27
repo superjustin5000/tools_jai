@@ -1,3 +1,11 @@
+#import "Basic";
+#import "common";
+
+
+
+// Deflate Spec: https://www.ietf.org/rfc/rfc1951.txt
+
+
 
 
 
@@ -17,9 +25,6 @@ Deflate_Block_Data :: struct {
 };
 
 
-
-#import "Basic";
-#import "common";
 
 
 

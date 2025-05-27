@@ -9,6 +9,12 @@
 
 
 
+/*
+Handmade Hero: Day 453+
+PNG Full Spec: https://www.w3.org/TR/2003/REC-PNG-20031110/
+*/
+
+
 
 #scope_file
 
