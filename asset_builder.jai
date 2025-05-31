@@ -630,7 +630,7 @@ main :: () {
             }
             mid_point := (lowest_point + highest_point) * 0.5;
             for mesh.vertices {
-                // meshvertices[it_index] = it - mid_point;
+                // mesh.vertices[it_index] = it - mid_point;
             }
             
             

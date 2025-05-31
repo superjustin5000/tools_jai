@@ -41,8 +41,8 @@ Mesh :: struct {
     skeleton_id:    s32;
     bone_ids:       [..]u32;
     
-    mesh_to_global: Matrix4;
-    global_to_mesh: Matrix4;
+    mesh_to_world:  Matrix4;
+    world_to_mesh:  Matrix4;
     
     dead_vertices: [..]u32;
 }
@@ -82,6 +82,9 @@ Animation_Transform :: struct {
     rotation:  V3;
     scale:     V3;
     local:     Matrix4;
+    
+    // used as a back reference to whatever animation format this was created from.
+    ref_id: u64;
 }
 
 Animation_Frame :: struct {

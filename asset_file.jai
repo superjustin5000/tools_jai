@@ -145,9 +145,9 @@ SJ_Mesh_Info :: struct {
     id: u32;
     asset_id: [128]u8;
     triangle_count: u32;
-    texture_maps: [Mesh_Texture_Type.Count]SJ_Model_Texture_Info;
-    mesh_to_global: Matrix4;
-    global_to_mesh: Matrix4;
+    texture_maps:  [Mesh_Texture_Type.Count]SJ_Model_Texture_Info;
+    mesh_to_world: Matrix4;
+    world_to_mesh: Matrix4;
 }
 
 SJ_Model_Info :: struct {
@@ -343,8 +343,8 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
         
         info:= consume_data(data, SJ_Mesh_Info);
         info.id = id;
-        info.mesh_to_global = mesh.mesh_to_global;
-        info.global_to_mesh = mesh.global_to_mesh;
+        info.mesh_to_world = mesh.mesh_to_world;
+        info.world_to_mesh = mesh.world_to_mesh;
         copy_string_to_u8_array(info.asset_id, mesh.name);
         
         info.triangle_count = cast(u32)mesh.triangles.count;

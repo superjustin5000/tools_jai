@@ -301,6 +301,14 @@ FBX_Animation_Stack :: struct {
 
 FBX_Null_Node :: struct {
     using #as base: FBX_Object;
+    
+    // IF the null node is used in a skeleton.
+    skeleton_id: u32;
+    bone:        *Bone;
+    child_limbs: [..]*FBX_Limb_Node;
+    clusters:    [..]*FBX_Cluster;
+    animation_curve_nodes: [..]*FBX_Animation_Curve_Node;
+    
 }
 
 
@@ -354,7 +362,7 @@ FBX_Scene :: struct {
     meshes:           [..]*FBX_Mesh;
     geometries:       [..]*FBX_Geometry;
     limb_nodes:       [..]*FBX_Limb_Node;
-    limb_roots:       [..]*FBX_Limb_Node;
+    limb_roots:       [..]*FBX_Object; // could be limb_nodes or null_nodes
     animation_stacks: [..]*FBX_Animation_Stack;
     cameras:          [..]*FBX_Camera;
     lights:           [..]*FBX_Light;
@@ -497,27 +505,70 @@ FBX_Frame_Rate :: enum {
     Custom          :: 14;
 }
 
-FBX_Up_Vector :: enum {
-    Axis_X:: 0;
-    Axis_Y:: 1;
-    Axis_Z:: 2;
+FBX_Axis :: enum {
+    X:: 0;
+    Y:: 1;
+    Z:: 2;
+}
+
+Basis :: struct {
+    u: FBX_Axis;
+    f: FBX_Axis;
+    r: FBX_Axis;
+    us: s32;
+    fs: s32;
+    rs: s32;
+}
+
+vector3_from_axis :: (axis: FBX_Axis, sign: s32 =  1) -> Vector3 {
+    result := Vector3.{x=0,y=0,z=0};
+    if axis == .X {
+        result.x = 1.0 * sign;
+    } else if axis == .Y {
+        result.y = 1.0 * sign;
+    } else if axis == .Z {
+        result.z = 1.0 * sign;
+    }
+    return result;
+}
+
+basis_matrix :: (basis: Basis) -> Matrix4 {
+    up_vector:      = vector3_from_axis(basis.u, basis.us);
+    forward_vector: = vector3_from_axis(basis.f, basis.fs);
+    right_vector:   = vector3_from_axis(basis.r, basis.rs);
+    
+    basis_m := make_matrix_from_rows(right_vector, up_vector, forward_vector);
+    return basis_m;
+}
+
+v3_reorient :: (v3: V3, from_basis: Basis, to_basis: Basis) -> V3 {
+    result := v3;
+    result.components[to_basis.r] = v3.components[from_basis.r] * from_basis.rs * to_basis.rs;
+    result.components[to_basis.u] = v3.components[from_basis.u] * from_basis.us * to_basis.us;
+    result.components[to_basis.f] = v3.components[from_basis.f] * from_basis.fs * to_basis.fs;
+    return result;
 }
 
 
-
-
 FBX_Global_Settings :: struct {
-    up_axis:                   FBX_Up_Vector = .Axis_X;
+    up_axis:                   FBX_Axis = .Z;
     up_axis_sign:              s32 = 1;
     
     // this seems to be 1-2 in Autodesk (odd/even parity), and 0-2 in Blender (axis as in UpAxis)
     // I recommend to ignore FrontAxis and use just UpVector
-    front_axis:                 s32 = 1;
+    front_axis:                 FBX_Axis = .X;
     front_axis_sign:            s32 = 1;
-    coord_axis:                 FBX_Coord_System = .Right_Handed;
-    coord_axis_sign:            s32 = 1;
+    coord_axis:                 FBX_Axis = .Y;
+    coord_axis_sign:            s32 = -1;
     original_up_axis:           s32 = 0;
     original_up_axis_sign:      s32 = 1;
+    basis:                      Matrix4;
+    inverse_basis:              Matrix4;
+    desired_basis:              Matrix4;
+    desired_basis_xform:        Matrix4;
+    basis_basis:             Basis;
+    desired_basis_basis:     Basis;
+    
     unit_scale_factor:          f32 = 1;
     original_unit_scale_factor: f32 = 1;
     time_span_start:            f64 = 0;
@@ -600,12 +651,10 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
     
     bone_count: u32 = 0;
     for root: scene.limb_roots {
-        do_bone :: (limb: *FBX_Limb_Node, parent: *Bone, bone_count: *u32) -> *Bone {
+        do_bone :: (limb: *FBX_Object, parent: *Bone, bone_count: *u32) -> *Bone {
             bone := cast(*Bone)alloc(size_of(Bone));
             bone.id       = <<bone_count;
             <<bone_count += 1;
-            limb.bone     = bone;
-            
             bone.local    = limb.xform_matrix;
             
             if parent != null {
@@ -620,15 +669,29 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                 }
             }
             
-            for limb.child_limbs {
-                child := do_bone(it, bone, bone_count);
-                array_add(*bone.children, child);
+            if limb.type == .Limb_Node {
+                limb_node := cast(*FBX_Limb_Node)limb;
+                limb_node.bone = bone;
+                for limb_node.child_limbs {
+                    child := do_bone(it, bone, bone_count);
+                    array_add(*bone.children, child);
+                }
+            } else if limb.type == .Null_Node {
+                null_node := cast(*FBX_Null_Node)limb;
+                null_node.bone = bone;
+                for null_node.child_limbs {
+                    child := do_bone(it, bone, bone_count);
+                    array_add(*bone.children, child);
+                }
             }
+            
             return bone;
         }
         
         skeletal_root := do_bone(root, null, *bone_count);
         array_add(*model.skeletons, skeletal_root);
+        
+        
     }
     model.bone_count = bone_count;
     
@@ -660,21 +723,29 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         
         for curve_node: layer.curve_nodes {
             if curve_node.link == null continue;
-            if curve_node.link.type == .Null_Node continue;
             
             update_animation_frame :: (frame: *Animation_Frame, curve_node: *FBX_Animation_Curve_Node, component_index: u8, value: f32) {
                 bone_id : s32 = -1;
                 mesh_id : s32 = -1;
                 transform : *Animation_Transform = null;
                 
-                if curve_node.link.type == .Limb_Node {
-                    bone_id = xx (cast(*FBX_Limb_Node)curve_node.link).bone.id;
+                if curve_node.link.type == .Limb_Node || curve_node.link.type == .Null_Node {
+                    
+                    if curve_node.link.type == .Limb_Node {
+                        bone_id = xx (cast(*FBX_Limb_Node)curve_node.link).bone.id;
+                        
+                    } else if curve_node.link.type == .Null_Node {
+                        bone_id = xx (cast(*FBX_Null_Node)curve_node.link).bone.id;
+                        
+                    }
+                    
                     for * frame.bone_transforms {
                         if it.object_id == bone_id {
                             transform = it;
                             break;
                         }
                     }
+                    
                     if transform == null {
                         xform := Animation_Transform.{};
                         xform_index := frame.bone_transforms.count;
@@ -682,11 +753,14 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                         transform = frame.bone_transforms.data + xform_index;
                         transform.object_id = bone_id;
                     }
+                    
                 } else if curve_node.link.type == .Mesh {
                     mesh_id = xx (cast(*FBX_Mesh)curve_node.link).mesh_id;
                     transform           = *frame.mesh_transform;
                     transform.object_id = mesh_id;
                 }
+                
+                transform.ref_id = curve_node.link.id;
                 
                 if #complete curve_node.mode == {
                     case .Translation; {
@@ -719,16 +793,22 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                 }
             }
             
+            
         }
         
         
+        // Once all the frames have been built,
+        // iterate over all of them and evalulate 
+        // local transforms.
         for *frame: animation.frames {
             if frame.mesh_transform.object_id >= 0 {
                 transform := *frame.mesh_transform;
-                transform.local = transformation_matrix(transform.position, transform.scale, quaternion(transform.rotation));
+                transform.local = evaluate_animation_transform(transform, scene);
+                
             } else {
                 for *transform: frame.bone_transforms {
-                    transform.local = transformation_matrix(transform.position, transform.scale, quaternion(transform.rotation));
+                    transform.local = evaluate_animation_transform(transform, scene);
+                    
                 }
             }
         }
@@ -742,6 +822,8 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
     
     for fbx_mesh: scene.meshes {
         
+        
+        
         geometry := fbx_mesh.geometry;
         if geometry == null {
             print("Mesh without geometry being ignored\n");
@@ -752,6 +834,20 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         
         mesh := cast(*Mesh)alloc(size_of(Mesh));
         mesh.name = fbx_mesh.name;
+        
+        
+        
+        mesh.mesh_to_world = fbx_mesh.xform_matrix;
+        mesh_parent := fbx_mesh.parent;
+        while mesh_parent != null {
+            mesh.mesh_to_world = mesh.mesh_to_world * mesh_parent.xform_matrix;
+            mesh_parent        = mesh_parent.parent;
+        }
+        model_world_to_mesh, model_world_to_mesh_worked := inverse(mesh.mesh_to_world);
+        assert(model_world_to_mesh_worked);
+        mesh.world_to_mesh = model_world_to_mesh;
+        
+        
         
         for v: geometry.vertices {
             // TODO this step shoudl be done later, since the values in the vertex_indices 
@@ -976,17 +1072,6 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         
         
         
-        mesh.mesh_to_global = fbx_mesh.xform_matrix;
-        mesh_parent := fbx_mesh.parent;
-        while mesh_parent != null {
-            mesh.mesh_to_global = mesh.mesh_to_global * mesh_parent.xform_matrix;
-            mesh_parent = mesh_parent.parent;
-        }
-        model_global_to_mesh, model_global_to_mesh_worked := inverse(mesh.mesh_to_global);
-        assert(model_global_to_mesh_worked);
-        mesh.global_to_mesh = model_global_to_mesh;
-        
-        
         
         skin := fbx_mesh.skin;
         if skin == null skin = fbx_mesh.geometry.skin;
@@ -994,12 +1079,17 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
             
             for cluster: skin.clusters {
                 if cluster.link == null continue;
-                if cluster.link.type != .Limb_Node && cluster.link.type != .Null_Node continue;
-                if cluster.link.type == .Null_Node {
-                    continue;
+                
+                bone : *Bone = null;
+                if cluster.link.type == .Limb_Node {
+                    limb_node: = cast(*FBX_Limb_Node)cluster.link;
+                    bone       = limb_node.bone;
+                } else if cluster.link.type == .Null_Node {
+                    null_node: = cast(*FBX_Null_Node)cluster.link;
+                    bone       = null_node.bone;
+                } else {
+                    print("Cluster: unimplemented link type: %\n", cluster.link.type);
                 }
-                limb_node: = cast(*FBX_Limb_Node)cluster.link;
-                bone:      = limb_node.bone;
                 
                 add_bone_info_to_triangle_vertex :: (vertex: *Mesh_Triangle_Vertex, bone_id: u32, weight: f32) {
                     if vertex.bone_count == 4 return;
@@ -1025,19 +1115,18 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                     }
                 }
                 
-                // mesh_to_world := cluster.transform_matrix;
+                // world_to_bone := cluster.transform_matrix;
                 // world_to_mesh, world_to_mesh_worked := inverse(mesh_to_world);
                 // assert(world_to_mesh_worked);
                 
                 // NOTE:
                 // bone.global_to_mesh = world_to_mesh;
                 // bone.mesh_to_global = mesh_to_world;
-                
                 bone_to_world := cluster.transform_link_matrix;
                 world_to_bone, world_to_bone_valid := inverse(bone_to_world);
                 assert(world_to_bone_valid);
                 
-                bone.inverse_bind = world_to_bone * mesh.mesh_to_global;
+                bone.inverse_bind = world_to_bone * mesh.mesh_to_world;
             }
         }
         
@@ -1290,6 +1379,37 @@ parse_global_settings :: (scene: *FBX_Scene) {
         scene.settings.time_mode = xx find_property_node_enum(settings_node, "TimeMode");
         scene.settings.custom_frame_rate = xx find_property_node_f32(settings_node, "CustomFrameRate");
         scene.settings.actual_frame_rate = frame_rate_from_time_mode(*scene.settings);
+        
+        scene.settings.up_axis         = xx find_property_node_enum(settings_node, "UpAxis");
+        scene.settings.front_axis      = xx find_property_node_enum(settings_node, "FrontAxis");
+        scene.settings.coord_axis      = xx find_property_node_enum(settings_node, "CoordAxis");
+        scene.settings.up_axis_sign    = find_property_node_s32(settings_node, "UpAxisSign");
+        scene.settings.front_axis_sign = find_property_node_s32(settings_node, "FrontAxisSign");
+        scene.settings.coord_axis_sign = find_property_node_s32(settings_node, "CoordAxisSign");
+        
+        scene.settings.basis_basis = Basis.{
+            u  = scene.settings.up_axis,
+            f  = scene.settings.front_axis,
+            r  = scene.settings.coord_axis,
+            us = scene.settings.up_axis_sign,
+            fs = scene.settings.front_axis_sign,
+            rs = scene.settings.coord_axis_sign
+        };
+        
+        scene.settings.basis = basis_matrix(scene.settings.basis_basis);
+        scene.settings.inverse_basis = inverse(scene.settings.basis);
+        
+        scene.settings.desired_basis_basis = Basis.{
+            u  = .Z,
+            f  = .X,
+            r  = .Y,
+            us =  1,
+            fs =  1,
+            rs = -1,
+        };
+        scene.settings.desired_basis = basis_matrix(scene.settings.desired_basis_basis);
+        
+        scene.settings.desired_basis_xform = scene.settings.desired_basis * scene.settings.inverse_basis;
     }
     
 }
@@ -1472,7 +1592,9 @@ parse_objects :: (scene: *FBX_Scene) {
         sub_type:     = cast(*T)alloc(size_of(T));
         <<sub_type    = .{};
         sub_type.type = type;
-        <<obj         = sub_type;
+        if obj != null {
+            <<obj = sub_type;
+        }
         return sub_type;
     }
     
@@ -1571,9 +1693,11 @@ parse_objects :: (scene: *FBX_Scene) {
                     limb := fbx_object(.Limb_Node, FBX_Limb_Node, *obj);
                     array_add(*scene.limb_nodes, limb);
                     
-                } else {
+                } else if class_prop.value == "Null" || class_prop.value == "Root" {
                     null_object := fbx_object(.Null_Node, FBX_Null_Node, *obj);
                     
+                } else {
+                    print("Unimplemented Model sub-type: %\n", class_prop.value);
                 }
             }
             
@@ -1609,7 +1733,7 @@ parse_objects :: (scene: *FBX_Scene) {
         
         
         if obj != null {
-            parse_object_transformations(obj, it.node);
+            parse_object_transformations(obj, it.node, *scene.settings);
             obj.id    = it_index;
             obj.node  = it.node;
             it.object = obj;
@@ -1658,6 +1782,11 @@ parse_objects :: (scene: *FBX_Scene) {
                     if parent.type == .Limb_Node {
                         limb := cast(*FBX_Limb_Node)parent;
                         array_add(*limb.animation_curve_nodes, curve_node);
+                        
+                    } else if parent.type == .Null_Node {
+                        null_ := cast(*FBX_Null_Node)parent;
+                        array_add(*null_.animation_curve_nodes, curve_node);
+                        
                     }
                     
                 }
@@ -1782,6 +1911,17 @@ parse_objects :: (scene: *FBX_Scene) {
             }
             case .Null_Node; {
                 
+                null_node := cast(*FBX_Null_Node)parent;
+                
+                if child.type == .Limb_Node {
+                    child_limb := cast(*FBX_Limb_Node)child;
+                    if child_limb.parent != null && child_limb.parent != null_node {
+                        print("Invalid skeletal structure. Limb already has another parent.\n");
+                        assert(false);
+                    }
+                    array_add(*null_node.child_limbs, child_limb);
+                }
+                
             }
             case .Camera; {
             }
@@ -1803,14 +1943,19 @@ parse_objects :: (scene: *FBX_Scene) {
                     }
                     cluster.link = child;
                     
+                    // NOTE: there is no guarantee that there is a one to one
+                    // relationship between clusters and links, since,
+                    // 2 clusters from different meshes could be connected to 
+                    // the same limb, if they share the skeletal structure.
+                    
                     if child.type == .Limb_Node {
-                        // NOTE: there is no guarantee that there is a one to one
-                        // relationship between clusters and limb_nodes, since,
-                        // 2 clusters from different meshes could be connected to 
-                        // the same limb, if they share the skeletal structure.
-                        
                         limb_node := cast(*FBX_Limb_Node)child;
                         array_add(*limb_node.clusters, cluster);
+                        
+                    } else if child.type == .Null_Node {
+                        null_node := cast(*FBX_Null_Node)child;
+                        array_add(*null_node.clusters, cluster);
+                        
                     }
                 }
                 
@@ -1915,6 +2060,9 @@ parse_objects :: (scene: *FBX_Scene) {
             }
             case .Limb_Node; {
                 post_parse_limb_node(xx it.object, scene);
+            }
+            case .Null_Node; {
+                
             }
             case .Blend_Shape_Channel; {
                 post_parse_blend_shape_channel(xx it.object);
@@ -2189,21 +2337,19 @@ gather_prop_matrix :: (prop: *FBX_Property, matrix: *Matrix4) {
 
 
 
-parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node) {
+parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node, settings: *FBX_Global_Settings) {
     
     if object.type == .Root {
         // object.xform_matrix = identity_matrix();
         a := 0;
     }
     
-    object.position         = find_property_node_v3(node, "Lcl Translation");
-    
+    object.position        = find_property_node_v3(node, "Lcl Translation");
     object.rotation_offset = find_property_node_v3(node, "RotationOffset");
     object.rotation_pivot  = find_property_node_v3(node, "RotationPivot");
     object.pre_rotation    = find_property_node_v3(node, "PreRotation");
     object.rotation        = find_property_node_v3(node, "Lcl Rotation");
     object.post_rotation   = find_property_node_v3(node, "PostRotation");
-    
     object.scale_offset    = find_property_node_v3(node, "ScalingOffset");
     object.scale_pivot     = find_property_node_v3(node, "ScalingPivot");
     object.scale           = find_property_node_v3(node, "Lcl Scaling");
@@ -2220,8 +2366,40 @@ parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node) {
     sp:    = translation_matrix(object.scale_pivot);
     _sp:   = inverse(sp);
     s:     = scaling_matrix(object.scale);
-    object.xform_matrix = p * ro * rp * pre * r * _post * _rp * so * sp * s * _sp;
+    xform: = p * ro * rp * pre * r * _post * _rp * so * sp * s * _sp;
+    
+    // xform  = settings.desired_basis_xform * xform;
+    object.xform_matrix = xform;
 }
+
+
+
+evaluate_animation_transform :: (anim_xform: *Animation_Transform, scene: *FBX_Scene) -> Matrix4 {
+    
+    obj_pair: = table_find_pointer(*scene.object_map, anim_xform.ref_id);
+    assert(obj_pair != null);
+    object:   = obj_pair.object;
+    
+    p:     = translation_matrix(anim_xform.position);
+    r:     = rotation_matrix(quaternion(anim_xform.rotation));
+    s:     = scaling_matrix(anim_xform.scale);
+    
+    ro:    = translation_matrix(object.rotation_offset);
+    rp:    = translation_matrix(object.rotation_pivot);
+    _rp:   = inverse(rp);
+    pre:   = rotation_matrix(quaternion(object.pre_rotation));
+    post:  = rotation_matrix(quaternion(object.post_rotation));
+    _post: = inverse(post);
+    so:    = translation_matrix(object.scale_offset);
+    sp:    = translation_matrix(object.scale_pivot);
+    _sp:   = inverse(sp);
+    
+    xform: = p * ro * rp * pre * r * _post * _rp * so * sp * s * _sp;
+    
+    return xform;
+    
+}
+
 
 
 
@@ -2595,17 +2773,33 @@ post_parse_mesh :: (mesh: *FBX_Mesh) {
 
 post_parse_limb_node :: (limb: *FBX_Limb_Node, scene: *FBX_Scene) {
     
-    set_limb_skeleton_id :: (limb: *FBX_Limb_Node, id: u32) {
-        limb.skeleton_id = id;
-        for limb.child_limbs {
-            set_limb_skeleton_id(it, id);
+    set_limb_skeleton_id :: (child: *FBX_Object, id: u32) {
+        if child.type == .Limb_Node {
+            limb := cast(*FBX_Limb_Node)child;
+            limb.skeleton_id = id;
+            for limb.child_limbs {
+                set_limb_skeleton_id(it, id);
+            }
+        } else if child.type == .Null_Node {
+            null_node := cast(*FBX_Null_Node)child;
+            null_node.skeleton_id = id;
+            for null_node.child_limbs {
+                set_limb_skeleton_id(it, id);
+            }
         }
     }
     
     if limb.parent_limb == null {
+        skeletal_root := *limb.base;
+        while skeletal_root.parent != null {
+            parent := skeletal_root.parent;
+            if parent == scene.root break;
+            if parent.type != .Limb_Node && parent.type != .Null_Node break;
+            skeletal_root = parent;
+        }
         skeleton_id := scene.limb_roots.count;
-        array_add(*scene.limb_roots, limb);
-        set_limb_skeleton_id(limb, xx skeleton_id);
+        array_add(*scene.limb_roots, skeletal_root);
+        set_limb_skeleton_id(skeletal_root, xx skeleton_id);
     }
 }
 

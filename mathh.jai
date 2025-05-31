@@ -101,6 +101,7 @@ V3 :: struct {
         
         struct { r, g, b: f32; };
         struct { rg: V2; _b: f32; };
+        components: [3]f32;
     }
 };
 
