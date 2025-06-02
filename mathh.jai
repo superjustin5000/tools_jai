@@ -14,6 +14,21 @@ SQUARE_ROOT_2 :: 1.4142135;
 SQUARE_ROOT_3 :: 1.7320508;
 
 
+cube :: (f: f32) -> f32 {
+    return f * f * f;
+}
+
+bezier :: (cp0: f32, cp1: f32, cp2: f32, cp3: f32, t: f32) -> f32 {
+    _t := 1-t;
+    
+    v0 := cube(_t) * cp0;
+    v1 := 3 * square(_t) * t * cp1;
+    v2 := 3 * _t * square(t) * cp2;
+    v3 := cube(t) * cp3;
+    
+    return v0 + v1 + v2 + v3;
+}
+
 V2 :: struct {
     union {
         struct { x, y : f32; };
