@@ -2820,7 +2820,7 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         animation.time = xx fbx_time_to_seconds(max_time - min_time);
         offset:        = xx fbx_time_to_seconds(min_time);
         
-        frame_count := seconds_to_keyframe(animation.time, *scene.settings);
+        frame_count: = layer.frame_count;
         for 0 .. frame_count-1 {
             frame := Animation_Frame.{};
             frame.mesh_transform.object_id = -1;
