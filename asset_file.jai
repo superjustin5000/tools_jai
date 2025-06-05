@@ -55,6 +55,8 @@ number of SJ_Mesh_Info for triangle_count.
 ---- The vertex info which is a 4 byte int + a 4 byte float, vertex_count number of times.
 ---- The child info, which is another bone info, child_count number of times. So this will be written ---- in a recursive manner.
 SJ_Animation_Info
+SJ_Animation_Graph_Info - will always be there, if state count is 0 then there is no graph.
+---- state count # of SJ_Animation_Graph_State's
 
 */
 
@@ -192,6 +194,19 @@ SJ_Animation_Frame_Info :: struct {
     mesh_transform:       Animation_Transform;
     bone_transform_count: u32;
 }
+
+SJ_Animation_Graph_Info :: struct {
+    state_count: u32; 
+    default_state: u32;
+}
+
+SJ_Animation_Graph_State_Info :: struct {
+    name:            [32]u8;
+    animation_index: u8;
+    next_state:      u32;
+    looping:         bool;
+}
+
 
 
 copy_string_to_u8_array :: (dest: []u8, src: string) {
@@ -399,7 +414,7 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
             v3.color = 0xFFFFFFFF;
         }
         
-        if mesh.materials.count == 0 return;
+        if mesh.materials.count == 0 continue;
         
         material := mesh.materials[0];
         
@@ -445,7 +460,7 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
     for animation: asset.model.animations {
         anim_info := consume_data(data, SJ_Animation_Info);
         // TODO maybe an animation can have a name somehow.
-        copy_string_to_u8_array(anim_info.name, asset.model.name);
+        copy_string_to_u8_array(anim_info.name, animation.name);
         anim_info.time = animation.time;
         anim_info.frame_count = xx animation.frames.count;
         for *frame: animation.frames {
@@ -460,6 +475,19 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
                 <<t = it;
             }
         }
+    }
+    
+    
+    graph := asset.model.animation_graph;
+    anim_graph_info := consume_data(data, SJ_Animation_Graph_Info);
+    anim_graph_info.state_count   = xx graph.states.count;
+    anim_graph_info.default_state = xx graph.default_state;
+    for *state: graph.states {
+        state_info := consume_data(data, SJ_Animation_Graph_State_Info);
+        copy_string_to_u8_array(state_info.name, state.name);
+        state_info.animation_index = xx state.animation_index;
+        state_info.next_state      = xx state.next_state_index;
+        state_info.looping         = state.looping;
     }
     
     
@@ -526,6 +554,10 @@ save_final_asset_file :: (assets: *Asset_Files) -> bool {
                 size_of_models += size_of(Animation_Transform) * cast(u32)frame.bone_transforms.count;
             }
         }
+        size_of_models += size_of(SJ_Animation_Graph_Info);
+        for state: model.animation_graph.states {
+            size_of_models += size_of(SJ_Animation_Graph_State_Info);
+        }
     }
     
     
@@ -580,8 +612,8 @@ save_final_asset_file :: (assets: *Asset_Files) -> bool {
     
     for *asset: assets.models {
         if it_index == assets.model_count break;
-        
         write_sj_asset_model(*data, asset, cast(u32)it_index);
+        
         header.model_count += 1;
         header.asset_count += 1;
         

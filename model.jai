@@ -4,7 +4,7 @@
 #import "common";
 #import "image";
 #import "Math";
-
+#import "animation_graph";
 
 
 Mesh_Triangle_Vertex :: struct {
@@ -53,6 +53,7 @@ Model :: struct {
     skeletons: [..]*Bone;
     bone_count: u32;
     animations: [..]*Animation;
+    animation_graph: Animation_Graph;
 }
 
 

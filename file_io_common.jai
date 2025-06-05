@@ -28,6 +28,7 @@ File_Type :: enum {
     OBJ;
     FBX;
     MTL;
+    Animation_Graph; //custom .animation_graph extension.
 };
 
 
@@ -88,6 +89,9 @@ get_file_type :: (filename: string) -> File_Type, string {
 #through;
         case "FBX";
         type = .FBX;
+        
+        case "animation_graph";
+        type = .Animation_Graph;
     }
     
     index_of_last_dot := find_index_from_right(filename, #char ".");
@@ -331,5 +335,23 @@ copy_line_to_buffer :: (buffer: *u8, line: *u8, index: *u32) {
     }
 }
 
-
+get_next_line :: (data: *Consumeable_Data_Block) -> bool, string {
+    
+    line_builder := String_Builder.{};
+    
+    c := <<(data.data);
+    
+    if data.at < data.size {
+        while true {
+            c = consume_data_value(data, u8);
+            if c == 0x0a break;
+            append(*line_builder, c);
+            if data.at == data.size break;
+        }
+        
+        line:string = builder_to_string(*line_builder);
+        return true, line;
+    }
+    return false, "";
+}
 

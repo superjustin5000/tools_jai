@@ -2703,21 +2703,7 @@ post_parse_animation_stack :: (stack: *FBX_Animation_Stack, scene: *FBX_Scene) {
 
 
 
-
-
-
-
-
-
-
-
-#scope_export
-
-
-
-fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
-    
-    push_allocator(temp);
+fbx_parse_data_into_scene :: (fbx_data: *u8, fbx_data_size: u64) -> *FBX_Scene {
     
     scene:  = cast(*FBX_Scene)alloc(size_of(FBX_Scene));
     <<scene = .{};
@@ -2752,10 +2738,15 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
     parse_takes(scene);
     parse_objects(scene);
     
+    return scene;
     
-    model: Model = .{};
-    model.name = model_name;
+}
+
+
+
+build_skeletons :: (scene: *FBX_Scene) -> [..]*Bone, u32 {
     
+    root_bones : [..]*Bone;
     
     bone_count: u32 = 0;
     for root: scene.limb_roots {
@@ -2797,20 +2788,27 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         }
         
         skeletal_root := do_bone(root, null, *bone_count);
-        array_add(*model.skeletons, skeletal_root);
+        array_add(*root_bones, skeletal_root);
         
         
     }
-    model.bone_count = bone_count;
     
+    return root_bones, bone_count;
     
+}
+
+
+
+build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
     
+    animations : [..]*Animation;
     
     for scene.animation_stacks {
         
         layer := it.layers[0];
         
         animation := cast(*Animation)alloc(size_of(Animation));
+        animation.name = name;
         max_time : s64 = 0;
         min_time := S64_MAX;
         for layer.curve_nodes {
@@ -2920,16 +2918,63 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
             }
         }
         
-        array_add(*model.animations, animation);
+        array_add(*animations, animation);
         
+    }
+    
+    return animations;
+    
+}
+
+
+#scope_export
+
+
+// Some FBX files contain purely the bone and 
+// animation data for a single animation and
+// expect that the meshes and other data
+// are in a base FBX file.
+fbx_load_additional_animations :: (fbx_data: *u8, fbx_data_size: u64, animation_name: string) -> [..]*Animation {
+    
+    
+    push_allocator(temp);
+    scene := fbx_parse_data_into_scene(fbx_data, fbx_data_size);
+    
+    
+    skeletons, bone_count: = build_skeletons(scene);
+    animations:            = build_animations(scene, animation_name);
+    
+    return animations;
+    
+}
+
+
+
+// Load an FBX into a model with as much data as possible:
+// The meshes, the animations, the skeletons, etc.
+fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
+    
+    push_allocator(temp);
+    scene := fbx_parse_data_into_scene(fbx_data, fbx_data_size);
+    
+    model: Model = .{};
+    model.name = model_name;
+    
+    skeletons, bone_count: = build_skeletons(scene);
+    animations:            = build_animations(scene, model_name);
+    
+    model.bone_count = bone_count;
+    for skeletons {
+        array_add(*model.skeletons, it);
+    }
+    
+    for animations {
+        array_add(*model.animations, it);
     }
     
     
     
-    
     for fbx_mesh: scene.meshes {
-        
-        
         
         geometry := fbx_mesh.geometry;
         if geometry == null {

@@ -18,6 +18,7 @@
 #import "tga";
 #import "obj";
 #import "fbx";
+#import "animation_graph";
 
 
 
@@ -87,12 +88,28 @@ Asset_Texture_Map :: struct {
     texture: Texture;
 }
 
+Asset_Animation :: struct {
+    asset_id:   string;
+    model_id:   string;
+    file_type:  File_Type;
+    filename:   string;
+    animations: [..]*Animation;
+}
+
 Asset_Model :: struct {
+    id:         u32;
+    asset_id:   string;
+    file_type:  File_Type;
+    filename:   string;
+    model:      Model;
+}
+
+Asset_Animation_Graph :: struct {
     id:        u32;
     asset_id:  string;
     file_type: File_Type;
     filename:  string;
-    model:     Model;
+    graph:     Animation_Graph;
 }
 
 
@@ -102,7 +119,8 @@ MAX_SPRITES :: 1024;
 MAX_SOUNDS :: 256;
 MAX_FONTS :: 16;
 MAX_MODELS :: 1024;
-MAX_MODEL_TEXTURES :: 1024 * 3;
+MAX_MODEL_TEXTURES :: MAX_MODELS * 3;
+MAX_MODEL_ANIMATIONS :: MAX_MODELS * 10;
 
 
 Asset_Files :: struct {
@@ -131,8 +149,14 @@ Asset_Files :: struct {
     materials: [MAX_MODELS]Asset_Material;
     material_count: u32;
     
-    texture_maps: [MAX_MODELS*3]Asset_Texture_Map;
+    texture_maps: [MAX_MODEL_TEXTURES]Asset_Texture_Map;
     texture_map_count: u32;
+    
+    animations: [MAX_MODEL_ANIMATIONS]Asset_Animation;
+    animation_count: u32;
+    
+    animation_graphs: [MAX_MODELS]Asset_Animation_Graph;
+    animation_graph_count: u32;
 };
 
 
@@ -145,10 +169,10 @@ add_sprite :: (files: *Asset_Files, file_info: File_Info) {
     assert(files.sprite_count < MAX_ATLAS_SPRITES);
     
     asset: *Asset_Sprite = *(files.sprites[files.sprite_count]);
-    asset.id = files.sprite_count;
-    asset.asset_id = copy_string(file_info.name);
-    asset.file_type = file_info.type;
-    asset.filename = copy_string(file_info.relative_path_and_filename);
+    asset.id             = files.sprite_count;
+    asset.asset_id       = copy_string(file_info.name);
+    asset.file_type      = file_info.type;
+    asset.filename       = copy_string(file_info.relative_path_and_filename);
     
     files.sprite_count += 1;
 }
@@ -171,7 +195,7 @@ add_sprite_atlas :: (files: *Asset_Files, width: u16, height: u16) {
 
 add_sprite_to_sprite_atlas :: (texture: *Asset_Sprite_Atlas, sprite: *Asset_Sprite, uv: Rect) {
     sprite.texture_index = texture.id;
-    sprite.uv = uv;
+    sprite.uv            = uv;
     texture.sprites[texture.sprite_count] = sprite;
     texture.sprite_count += 1;
 }
@@ -180,9 +204,9 @@ add_sprite_to_sprite_atlas :: (texture: *Asset_Sprite_Atlas, sprite: *Asset_Spri
 add_font :: (files: *Asset_Files, file_info: File_Info, pixel_sizes: []u16, desired_glyphs: string = DESIRED_GLYPHS_ALL) {
     assert(files.font_count < MAX_FONTS);
     asset: *Asset_Font = *files.fonts[files.font_count];
-    asset.id = files.font_count;
-    asset.file_type = file_info.type;
-    asset.filename = copy_string(file_info.relative_path_and_filename);
+    asset.id           = files.font_count;
+    asset.file_type    = file_info.type;
+    asset.filename     = copy_string(file_info.relative_path_and_filename);
     for size: pixel_sizes {
         array_add(*asset.desired_pixel_sizes, size);
         sb := String_Builder.{};
@@ -199,10 +223,10 @@ add_font :: (files: *Asset_Files, file_info: File_Info, pixel_sizes: []u16, desi
 add_sound :: (files: *Asset_Files, file_info: File_Info) {
     assert(files.sound_count < MAX_SOUNDS);
     asset: Asset_Sound  = .{};
-    asset.id = files.sound_count;
-    asset.asset_id = copy_string(file_info.name);
+    asset.id        = files.sound_count;
+    asset.asset_id  = copy_string(file_info.name);
     asset.file_type = file_info.type;
-    asset.filename = copy_string(file_info.relative_path_and_filename);
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
     files.sounds[asset.id] = asset;
     files.sound_count+=1;
 }
@@ -214,10 +238,10 @@ add_model :: (files: *Asset_Files, file_info: File_Info) {
     assert(files.model_count < MAX_MODELS);
     
     asset: Asset_Model = .{};
-    asset.id = files.model_count;
-    asset.asset_id = copy_string(file_info.name);
+    asset.id        = files.model_count;
+    asset.asset_id  = copy_string(file_info.name);
     asset.file_type = file_info.type;
-    asset.filename = copy_string(file_info.relative_path_and_filename);
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
     
     files.models[asset.id] = asset;
     files.model_count += 1;
@@ -228,7 +252,7 @@ add_material :: (files: *Asset_Files, file_info: File_Info) {
     
     asset: Asset_Material = .{};
     asset.file_type = file_info.type;
-    asset.filename = copy_string(file_info.relative_path_and_filename);
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
     files.materials[files.material_count] = asset;
     files.material_count += 1;
 }
@@ -237,13 +261,33 @@ add_texture_map :: (files: *Asset_Files, file_info: File_Info) {
     assert(files.texture_map_count < MAX_MODEL_TEXTURES);
     
     asset: Asset_Texture_Map = .{};
-    asset.name = file_info.name;
+    asset.name      = file_info.name;
     asset.file_type = file_info.type;
-    asset.filename = copy_string(file_info.relative_path_and_filename);
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
     files.texture_maps[files.texture_map_count] = asset;
     files.texture_map_count += 1;
 }
 
+add_animation :: (files: *Asset_Files, file_info: File_Info, anim_name: string, model_name: string) {
+    assert(files.animation_count < MAX_MODEL_ANIMATIONS);
+    asset: Asset_Animation = .{};
+    asset.asset_id  = anim_name;
+    asset.model_id  = model_name;
+    asset.file_type = file_info.type;
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
+    files.animations[files.animation_count] = asset;
+    files.animation_count += 1;
+}
+
+add_animation_graph :: (files: *Asset_Files, file_info: File_Info) {
+    assert(files.animation_graph_count < MAX_MODELS);
+    asset: Asset_Animation_Graph = .{};
+    asset.asset_id  = file_info.name;
+    asset.file_type = file_info.type;
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
+    files.animation_graphs[files.animation_graph_count] = asset;
+    files.animation_graph_count += 1;
+}
 
 
 
@@ -344,6 +388,7 @@ load_model :: (asset: *Asset_Model) {
             model = obj_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size);
             
         } else if (asset.file_type == .FBX) {
+            
             model = fbx_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size,
                              asset.asset_id);
             
@@ -411,6 +456,53 @@ load_texture_map :: (asset: *Asset_Texture_Map) {
     }
 }
 
+load_animation :: (asset: *Asset_Animation) {
+    
+    file_result: File_Result = read_file(asset.filename);
+    defer free_file(file_result);
+    
+    if (file_result.content_size) {
+        if (asset.file_type == .FBX) {
+            
+            animations := fbx_load_additional_animations(cast(*u8)file_result.contents, cast(u64)file_result.content_size,
+                                                         asset.asset_id);
+            
+            for animations {
+                array_add(*asset.animations, it);
+            }
+            
+        } else {
+            print("unimplemented animation file type: %\n", asset.file_type);
+        }
+    }
+    else {
+        print("err (conent_size): %\n", file_result.content_size);
+    }
+}
+
+
+load_animation_graph :: (asset: *Asset_Animation_Graph) {
+    
+    file_result: File_Result = read_file(asset.filename);
+    defer free_file(file_result);
+    
+    if (file_result.content_size) {
+        if (asset.file_type == .Animation_Graph) {
+            
+            asset.graph = animation_graph_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size,
+                                               asset.asset_id);
+            
+        } else {
+            print("unimplemented animation file type: %\n", asset.file_type);
+        }
+    }
+    else {
+        print("err (conent_size): %\n", file_result.content_size);
+    }
+}
+
+
+
 
 
 #scope_export
@@ -454,8 +546,14 @@ main :: () {
     model_file_proc :: (file_info: File_Info, data: *void) {
         asset_files: = cast(*Asset_Files)data;
         if file_info.type == {
-            case .FBX;
-            add_model(asset_files, file_info);
+            case .FBX; {
+                found, model_name, anim_name := split_from_left(file_info.name, #char "@");
+                if found {
+                    add_animation(asset_files, file_info, anim_name, model_name);
+                } else {
+                    add_model(asset_files, file_info);
+                }
+            }
             case .OBJ;
             add_model(asset_files, file_info);
             case .MTL;
@@ -464,6 +562,8 @@ main :: () {
 #through;
             case .TGA;
             add_texture_map(asset_files, file_info);
+            case .Animation_Graph;
+            add_animation_graph(asset_files, file_info);
         }
     }
     
@@ -539,14 +639,22 @@ main :: () {
         if it_index == files.texture_map_count break;
         load_texture_map(asset);
     }
+    for *asset: files.animations {
+        if it_index == files.animation_count break;
+        load_animation(asset);
+    }
+    for *asset: files.animation_graphs {
+        if it_index == files.animation_graph_count break;
+        load_animation_graph(asset);
+    }
     
     
     
-    for *asset: files.models {
+    for *model_asset: files.models {
         if it_index == files.model_count break;
-        load_model(asset);
+        load_model(model_asset);
         
-        model := asset.model;
+        model := *model_asset.model;
         
         for mesh: model.meshes {
             files.model_size += cast(u32)mesh.triangles.count * (size_of(SJ_Mesh_Vertex) * 3);
@@ -613,8 +721,6 @@ main :: () {
                 
             }
             
-            
-            
             // moving all vertices around origin.
             lowest_point  := V3.{x= 100000000,y= 10000000,z= 10000000};
             highest_point := V3.{x=-100000000,y=-10000000,z=-10000000};
@@ -634,6 +740,47 @@ main :: () {
             }
             
             
+        }
+        
+        
+        
+        for *animation_asset: files.animations {
+            if it_index == files.animation_count break;
+            if animation_asset.model_id == model_asset.asset_id {
+                for animation: animation_asset.animations {
+                    array_add(*model.animations, animation);
+                }
+            }
+        }
+        
+        
+        for graph_asset: files.animation_graphs {
+            if it_index == files.animation_graph_count break;
+            
+            if graph_asset.asset_id == model_asset.asset_id {
+                model.animation_graph = graph_asset.graph;
+                break;
+            }
+        }
+        
+        for *state: model.animation_graph.states {
+            found := false;
+            for anim: model.animations {
+                if anim.name == state.animation_name {
+                    state.animation_index = it_index;
+                    found = true;
+                    break;
+                }
+            }
+            if !found print("Animation state could not find matching animation by name: %\n", state.animation_name);
+            
+            if state.next_state.count > 0 {
+                for *next_state : model.animation_graph.states {
+                    if next_state.name == state.next_state {
+                        state.next_state_index = it_index;
+                    }
+                }
+            }
         }
         
     }
