@@ -14,7 +14,7 @@
 Animation_Graph :: struct {
     name:   string;
     states: [..]Animation_State;
-    default_state: s64;
+    initial_state: s64;
 }
 
 Animation_State :: struct {
@@ -38,7 +38,7 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
     if !line_exists return graph;
     
     version := -1;
-    default_state_name := "";
+    initial_state_name := "";
     
     while line_exists {
         
@@ -55,10 +55,10 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
             } else {
                 if version < 0 invalid_code_path("Version should be defined before anything else.");
                 
-                if starts_with(line, "#default") {
+                if starts_with(line, "#initial_state") {
                     found, left, name := split_from_left(line, " ");
-                    if !found invalid_code_path("Default state name not defined after #default declaration.");
-                    default_state_name = name;
+                    if !found invalid_code_path("Initial state name not defined after #initial_state declaration.");
+                    initial_state_name = name;
                 }
             }
         } else {
@@ -88,10 +88,10 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
     
     
     
-    if default_state_name.count > 0 {
+    if initial_state_name.count > 0 {
         for graph.states {
-            if default_state_name == it.name {
-                graph.default_state = it_index;
+            if initial_state_name == it.name {
+                graph.initial_state = it_index;
                 break;
             }
         }

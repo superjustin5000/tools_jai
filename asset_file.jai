@@ -197,7 +197,7 @@ SJ_Animation_Frame_Info :: struct {
 
 SJ_Animation_Graph_Info :: struct {
     state_count: u32; 
-    default_state: u32;
+    initial_state: u32;
 }
 
 SJ_Animation_Graph_State_Info :: struct {
@@ -481,7 +481,7 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
     graph := asset.model.animation_graph;
     anim_graph_info := consume_data(data, SJ_Animation_Graph_Info);
     anim_graph_info.state_count   = xx graph.states.count;
-    anim_graph_info.default_state = xx graph.default_state;
+    anim_graph_info.initial_state = xx graph.initial_state;
     for *state: graph.states {
         state_info := consume_data(data, SJ_Animation_Graph_State_Info);
         copy_string_to_u8_array(state_info.name, state.name);

@@ -456,11 +456,23 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                 
                 prop.array = true;
                 
-                while token.type != .Bracket_Close { // get to the end of the array def
+                // Try to blow past any number of open and close brackets
+                // to accomodate N dimensional arrays.
+                while true {
                     index += 1;
                     token = tokenizer.tokens[index];
+                    if token.type == .Bracket_Close {
+                        index += 1;
+                        token = tokenizer.tokens[index];
+                        // Only end loop when we've found a closing bracket without
+                        // the next token being ANOTERH opening bracket.
+                        if token.type != .Bracket_Open {
+                            // equal or semicolon or array, or comma separated props
+                            break;
+                        }
+                    }
                 }
-                index += 1; // equal or semicolon or array, or comma separated props
+                
             }
             
             
