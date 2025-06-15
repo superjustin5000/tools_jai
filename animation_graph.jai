@@ -37,10 +37,15 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
     line_exists, line: = get_next_line(*data);
     if !line_exists return graph;
     
-    version := -1;
-    initial_state_name := "";
+    version             := -1;
+    initial_state_name  := "";
+    current_state_index := -1;
+    line_number         := 0;
     
     while line_exists {
+        
+        line = trim(line);
+        line_number += 1;
         
         if line.count <= 0 {
             line_exists, line = get_next_line(*data);
@@ -48,39 +53,51 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
         }
         
         if starts_with(line, "#") {
-            if starts_with(line, "#version") {
+            
+            found, command_name, command_value := split_from_left(line, " ");
+            command_value = trim(command_value);
+            
+            if command_name == "#version" {
                 found, left, version_string := split_from_left(line, " ");
-                if !found invalid_code_path("Version number not found next to #version declaration.");
+                if !found invalid_code_path("Line %: Version number not found next to #version declaration.", line_number);
                 version = parse_int(*version_string);
-            } else {
-                if version < 0 invalid_code_path("Version should be defined before anything else.");
                 
-                if starts_with(line, "#initial_state") {
+            } else {
+                if version < 0 invalid_code_path("Line %: Version should be defined before anything else.", line_number);
+                
+                if command_name == "#state" {
+                    state := Animation_State.{};
+                    state.name             = command_value;
+                    state.looping          = true;
+                    
+                    array_add(*graph.states, state);
+                    current_state_index += 1;
+                    
+                } else if command_name == "#initial_state" {
                     found, left, name := split_from_left(line, " ");
-                    if !found invalid_code_path("Initial state name not defined after #initial_state declaration.");
+                    if !found invalid_code_path("Line %: Initial state name not defined after #initial_state declaration.", line_number);
                     initial_state_name = name;
+                    
                 }
             }
         } else {
             
-            found, state_name, anim_name := split_from_left(line, " ");
-            
-            if !found invalid_code_path("Line should follow the format 'state_name anim_name : next_state_name' with ': next_state_name' being optional");
-            
-            state := Animation_State.{};
-            state.name = trim(state_name);
-            
-            has_next, a_name, next_state_name := split_from_left(anim_name, ":");
-            if has_next {
-                state.animation_name = trim(a_name);
-                state.next_state     = trim(next_state_name);
-                state.looping = false;
-            } else {
-                state.animation_name = trim(anim_name);
-                state.looping = true;
+            if current_state_index < 0 { invalid_code_path("Line %: State not defined before property definitions. States are defined '#state state_name' before other lines. Or This is a dead line with non white space characters.\n", line_number);
             }
             
-            array_add(*graph.states, state);
+            state := graph.states.data + current_state_index;
+            
+            found, property_name, property_value := split_from_left(line, " ");
+            property_value = trim(property_value);
+            
+            if property_name == "animation" {
+                state.animation_name = property_value;
+                
+            } else if property_name == "next_state" {
+                state.next_state = property_value;
+                state.looping    = false;
+                
+            }
         }
         
         line_exists, line = get_next_line(*data);

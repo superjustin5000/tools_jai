@@ -122,7 +122,7 @@ Mesh_Material :: struct {
     alpha:             f32;
     illum:             u32;
     texture_map_files: [Mesh_Texture_Type.Count]string;
-    texture_maps:      [Mesh_Texture_Type.Count]*Texture;
+    texture_map_ids:   [Mesh_Texture_Type.Count]s32;
 }
 
 

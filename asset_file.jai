@@ -70,17 +70,19 @@ SJ_Asset_Type :: enum u32 {
     Sound        :: 2;
     Font         :: 3;
     Model        :: 4;
+    Texture_Map  :: 5;
 };
 
 
 
 SJ_Header :: struct {
-    code: u32; //4cc to check file format
-    asset_count: u32;
+    code:               u32; // magic number to check file format
+    asset_count:        u32;
     sprite_atlas_count: u32;
-    sound_count: u32;
-    font_count: u32;
-    model_count: u32;
+    sound_count:        u32;
+    font_count:         u32;
+    model_count:        u32;
+    texture_map_count:  u32;
 }  
 
 
@@ -88,7 +90,12 @@ SJ_Asset_Header :: struct {
     id: u32;
     type: SJ_Asset_Type;
     size_bytes: u32;
+    track_filename_count: u32;
 } 
+
+SJ_Track_Filename :: struct {
+    filename: [128]u8;
+}
 
 SJ_Sprite_Atlas_Info :: struct {
     width: u32;
@@ -111,51 +118,53 @@ SJ_Sound_Info :: struct {
 } 
 
 SJ_Font_Glyph_Info :: struct {
-    value: u8;
-    atlas_uv: Rect;
-    size: V2;
-    rect: Rect;
-    advance: f32;
+    value:        u8;
+    atlas_uv:     Rect;
+    size:         V2;
+    rect:         Rect;
+    advance:      f32;
     left_padding: f32;
-    kerning: [128]f32;
+    kerning:      [128]f32;
 } 
 
 SJ_Font_Atlas_Info :: struct {
-    width: u32;
-    height: u32;
+    width:      u32;
+    height:     u32;
     size_count: u32;
 }
 
 SJ_Font_Info :: struct {
-    id: u32;
-    asset_id: [128]u8;
-    pixel_size: u32;
-    height: f32;
+    id:          u32;
+    asset_id:    [128]u8;
+    pixel_size:  u32;
+    height:      f32;
     line_height: f32;
-    ascent: f32;
-    descent: f32;
-    line_gap: f32;
+    ascent:      f32;
+    descent:     f32;
+    line_gap:    f32;
     glyph_count: u32;
 } 
 
-SJ_Model_Texture_Info :: struct {
-    width: u32;
-    height: u32;
+SJ_Texture_Map_Info :: struct {
+    id:       u32;
+    asset_id: [128]u8;
+    width:    u32;
+    height:   u32;
 }
 
 SJ_Mesh_Info :: struct {
-    id: u32;
-    asset_id: [128]u8;
-    triangle_count: u32;
-    texture_maps:  [Mesh_Texture_Type.Count]SJ_Model_Texture_Info;
-    mesh_to_world: Matrix4;
-    world_to_mesh: Matrix4;
+    id:              u32;
+    asset_id:        [128]u8;
+    triangle_count:  u32;
+    texture_map_ids: [Mesh_Texture_Type.Count]s32;
+    mesh_to_world:   Matrix4;
+    world_to_mesh:   Matrix4;
 }
 
 SJ_Model_Info :: struct {
-    id: u32;
-    asset_id: [128]u8;
-    mesh_count: u32;
+    id:              u32;
+    asset_id:        [128]u8;
+    mesh_count:      u32;
     skeleton_count:  u32;
     bone_count:      u32;
     animation_count: u32;
@@ -196,7 +205,7 @@ SJ_Animation_Frame_Info :: struct {
 }
 
 SJ_Animation_Graph_Info :: struct {
-    state_count: u32; 
+    state_count:   u32; 
     initial_state: u32;
 }
 
@@ -206,6 +215,21 @@ SJ_Animation_Graph_State_Info :: struct {
     next_state:      u32;
     looping:         bool;
 }
+
+
+SJ_Asset_Single_File_Data :: struct {
+    data: *u8;
+    size: u32;
+};
+
+SJ_Asset_File_Datas :: struct {
+    model_datas       :[..]SJ_Asset_Single_File_Data;
+    texture_map_datas :[..]SJ_Asset_Single_File_Data;
+    sprite_datas      :[..]SJ_Asset_Single_File_Data;
+    sound_datas       :[..]SJ_Asset_Single_File_Data;
+    font_datas        :[..]SJ_Asset_Single_File_Data;
+}
+
 
 
 
@@ -338,21 +362,58 @@ write_sj_asset_font :: (data: **u8, asset: *Asset_Font, id:u32) {
 }
 
 
+write_sj_asset_texture_map :: (data: **u8, asset: *Asset_Texture_Map) {
+    
+    asset_header:= consume_data(data, SJ_Asset_Header);
+    asset_header.id   = asset.id;
+    asset_header.type = .Texture_Map;
+    asset_header.track_filename_count = xx asset.track_filenames.count;
+    
+    texure_info := consume_data(data, SJ_Texture_Map_Info);
+    texure_info.width  = asset.texture.width;
+    texure_info.height = asset.texture.height;
+    copy_string_to_u8_array(texure_info.asset_id, asset.asset_id);
+    
+    
+    if asset.track_filenames.count > 0 {
+        for 0 .. asset.track_filenames.count - 1 {
+            track_file := consume_data(data, SJ_Track_Filename);
+            copy_string_to_u8_array(track_file.filename, asset.track_filenames[it]);
+        }
+    }
+    
+    pixel_count: = cast(u32)texure_info.width * cast(u32)texure_info.height;
+    
+    for pixel_index: 0 .. pixel_count-1 {
+        dest_pixel: = consume_data(data, Pixel);
+        src_pixel: = asset.texture.pixels + pixel_index;
+        <<dest_pixel = <<src_pixel;
+    }
+    
+}
 
 
 write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
     asset_header:= consume_data(data, SJ_Asset_Header);
     asset_header.id = id;
     asset_header.type = .Model;
+    asset_header.track_filename_count = xx asset.track_filenames.count;
     // asset_header.size_bytes = cast(u32)asset.code.count;
     
     model_info := consume_data(data, SJ_Model_Info);
     model_info.mesh_count = xx asset.model.meshes.count;
     copy_string_to_u8_array(model_info.asset_id, asset.model.name);
     
-    model_info.skeleton_count  = xx asset.model.skeletons.count;
-    model_info.bone_count      = asset.model.bone_count;
-    model_info.animation_count = xx asset.model.animations.count;
+    model_info.skeleton_count   = xx asset.model.skeletons.count;
+    model_info.bone_count       = asset.model.bone_count;
+    model_info.animation_count  = xx asset.model.animations.count;
+    
+    if asset.track_filenames.count > 0 {
+        for 0 .. asset.track_filenames.count - 1 {
+            track_file := consume_data(data, SJ_Track_Filename);
+            copy_string_to_u8_array(track_file.filename, asset.track_filenames[it]);
+        }
+    }
     
     for mesh: asset.model.meshes {
         
@@ -363,7 +424,6 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
         copy_string_to_u8_array(info.asset_id, mesh.name);
         
         info.triangle_count = cast(u32)mesh.triangles.count;
-        
         
         
         for *tri: mesh.triangles {
@@ -414,24 +474,20 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
             v3.color = 0xFFFFFFFF;
         }
         
+        
+        
+        for 0 .. Mesh_Texture_Type.Count - 1 {
+            info.texture_map_ids[it] = -1;
+        }
+        
         if mesh.materials.count == 0 continue;
         
         material := mesh.materials[0];
         
-        for material.texture_maps {
-            if it != null {
-                info.texture_maps[it_index].width  = it.width;
-                info.texture_maps[it_index].height = it.height;
-                if it.width > 0 && it.height > 0 {
-                    pixel_count := cast(u32)it.width * cast(u32)it.height ;
-                    for pixel_index: 0 .. pixel_count-1 {
-                        dest_pixel:  = consume_data(data, Pixel);
-                        src_pixel:   = it.pixels + pixel_index;
-                        <<dest_pixel = <<src_pixel;
-                    }
-                }
-            }
+        for 0 .. Mesh_Texture_Type.Count - 1 {
+            info.texture_map_ids[it] = material.texture_map_ids[it];
         }
+        
     }
     
     
@@ -497,33 +553,96 @@ write_sj_asset_model :: (data: **u8, asset: *Asset_Model, id:u32) {
 
 
 
-save_final_asset_file :: (assets: *Asset_Files) -> bool {
+
+
+save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: bool) {
     
     print("preparing save\n");
     
-    size_of_sprite_atlases:u32 = assets.sprite_atlas_size + 
-    (size_of(SJ_Asset_Header) * assets.sprite_atlas_count) + 
-    (size_of(SJ_Sprite_Atlas_Info) * assets.sprite_atlas_count);
-    for atlas: assets.sprite_atlases {
+    
+    file_datas: SJ_Asset_File_Datas = .{};
+    
+    resources_directory := "../resources";
+    
+    
+    size_of_models:         u32;
+    size_of_texture_maps:   u32;
+    size_of_sprite_atlases: u32;
+    size_of_sounds:         u32;
+    size_of_fonts:          u32;
+    
+    for *asset_sprite_atlas: assets.sprite_atlases {
         if it_index == assets.sprite_atlas_count break;
-        size_of_sprite_atlases += size_of(SJ_Sprite_Info) * atlas.sprite_count;
+        
+        sprite_file_data := SJ_Asset_Single_File_Data.{};
+        
+        sprite_file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Sprite_Atlas_Info);
+        sprite_file_data.size += size_of(SJ_Sprite_Info)  * asset_sprite_atlas.sprite_count;
+        sprite_file_data.size += cast(u32)asset_sprite_atlas.texture.width * cast(u32)asset_sprite_atlas.texture.height * size_of(Pixel);
+        
+        sprite_file_data.data = xx alloc(sprite_file_data.size);
+        data := sprite_file_data.data;
+        write_sj_asset_sprite_atlas(*data, asset_sprite_atlas, xx it_index);
+        array_add(*file_datas.sprite_datas, sprite_file_data);
+        
+        if single_files {
+            filename := sprint("%/%.%", resources_directory, xx it_index, "sj5k_sprite_atlas");
+            delete_file(filename);
+            written := write_file(filename, sprite_file_data.data, sprite_file_data.size);
+        }
+        
+        size_of_sprite_atlases += sprite_file_data.size;
     };
     
-    sound_count := assets.sound_count - assets.sound_failed_count;
-    size_of_sounds:u32 = assets.sound_size + 
-    (size_of(SJ_Asset_Header) * sound_count) + 
-    (size_of(SJ_Sound_Info) * sound_count);
     
-    
-    size_of_fonts:u32 = assets.font_size;
-    for asset_font: assets.fonts {
-        if it_index == assets.font_count break;
-        size_of_fonts += size_of(SJ_Asset_Header); 
-        size_of_fonts += size_of(SJ_Font_Atlas_Info);
-        for font: asset_font.fonts {
-            size_of_fonts += size_of(SJ_Font_Info);
-            size_of_fonts += cast(u32)(size_of(SJ_Font_Glyph_Info) * font.glyphs.count);
+    for *asset_sound: assets.sounds {
+        if it_index == assets.sound_count break;
+        if asset_sound.file_type == .Unknown continue;
+        
+        sound_file_data := SJ_Asset_Single_File_Data.{};
+        sound_file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Sound_Info);
+        sound_file_data.size += asset_sound.snd.size;
+        
+        sound_file_data.data = xx alloc(sound_file_data.size);
+        data := sound_file_data.data;
+        write_sj_asset_sound(*data, asset_sound, xx it_index);
+        array_add(*file_datas.sound_datas, sound_file_data);
+        
+        if single_files {
+            filename := sprint("%/%.%", resources_directory, asset_sound.asset_id, "sj5k_sound");
+            delete_file(filename);
+            written := write_file(filename, sound_file_data.data, sound_file_data.size);
         }
+        
+        size_of_sounds += sound_file_data.size;
+    }
+    
+    
+    
+    for *asset_font: assets.fonts {
+        if it_index == assets.font_count break;
+        
+        font_file_data := SJ_Asset_Single_File_Data.{};
+        font_file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Font_Atlas_Info);
+        font_file_data.size += cast(u32)asset_font.atlas.width * cast(u32)asset_font.atlas.height * size_of(Pixel);
+        
+        for font: asset_font.fonts {
+            font_file_data.size += size_of(SJ_Font_Info);
+            font_file_data.size += cast(u32)(size_of(SJ_Font_Glyph_Info) * font.glyphs.count);
+        }
+        
+        font_file_data.data = xx alloc(font_file_data.size);
+        data := font_file_data.data;
+        write_sj_asset_font(*data, asset_font, xx it_index);
+        array_add(*file_datas.font_datas, font_file_data);
+        
+        if single_files {
+            filename := sprint("%/%.%", resources_directory, asset_font.asset_id, "sj5k_font");
+            delete_file(filename);
+            written := write_file(filename, font_file_data.data, font_file_data.size);
+        }
+        
+        size_of_fonts += font_file_data.size;
     }
     
     
@@ -535,92 +654,171 @@ save_final_asset_file :: (assets: *Asset_Files) -> bool {
         return size;
     }
     
-    size_of_models:u32 = assets.model_size;
     for *asset_model: assets.models {
-        model := asset_model.model;
-        size_of_models += size_of(SJ_Asset_Header);
-        size_of_models += size_of(SJ_Model_Info);
-        for mesh: model.meshes {
-            size_of_models += size_of(SJ_Mesh_Info);
-        }
-        for root_bone: model.skeletons {
-            size_of_models += size_of_bone(root_bone);
-        }
-        for animation: model.animations {
-            size_of_models += size_of(SJ_Animation_Info);
-            for frame: animation.frames {
-                size_of_models += size_of(f32); // the frame time.
-                size_of_models += size_of(SJ_Animation_Frame_Info);
-                size_of_models += size_of(Animation_Transform) * cast(u32)frame.bone_transforms.count;
+        if it_index == assets.model_count break;
+        
+        model_file_data := SJ_Asset_Single_File_Data.{};
+        model_file_data.size = size_of(SJ_Asset_Header) + size_of(SJ_Model_Info);
+        
+        if asset_model.track_filenames.count > 0 {
+            for 0 .. asset_model.track_filenames.count - 1 {
+                model_file_data.size += size_of(SJ_Track_Filename);
             }
         }
-        size_of_models += size_of(SJ_Animation_Graph_Info);
-        for state: model.animation_graph.states {
-            size_of_models += size_of(SJ_Animation_Graph_State_Info);
+        
+        model := asset_model.model;
+        for mesh: model.meshes {
+            model_file_data.size += size_of(SJ_Mesh_Info);
+            model_file_data.size += cast(u32)mesh.triangles.count * (size_of(SJ_Mesh_Vertex) * 3);
         }
+        
+        for root_bone: model.skeletons {
+            model_file_data.size += size_of_bone(root_bone);
+        }
+        
+        for animation: model.animations {
+            model_file_data.size += size_of(SJ_Animation_Info);
+            for frame: animation.frames {
+                model_file_data.size += size_of(f32); // the frame time.
+                model_file_data.size += size_of(SJ_Animation_Frame_Info);
+                model_file_data.size += size_of(Animation_Transform) * cast(u32)frame.bone_transforms.count;
+            }
+        }
+        
+        model_file_data.size += size_of(SJ_Animation_Graph_Info);
+        for state: model.animation_graph.states {
+            model_file_data.size += size_of(SJ_Animation_Graph_State_Info);
+        }
+        
+        model_file_data.data = xx alloc(model_file_data.size);
+        data := model_file_data.data;
+        write_sj_asset_model(*data, asset_model, xx it_index);
+        array_add(*file_datas.model_datas, model_file_data);
+        
+        if single_files {
+            filename := sprint("%/%.%", resources_directory, asset_model.asset_id, "sj5k_model");
+            delete_file(filename);
+            written := write_file(filename, model_file_data.data, model_file_data.size);
+        }
+        
+        size_of_models += model_file_data.size;
     }
     
     
-    total_size:u32 = size_of(SJ_Header) + 
+    for *asset_texture_map : assets.texture_maps {
+        if it_index == assets.texture_map_count break;
+        
+        texture_map_file_data := SJ_Asset_Single_File_Data.{};
+        texture_map_file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Texture_Map_Info);
+        texture_map_file_data.size += 
+            cast(u32)size_of(Pixel) * 
+            cast(u32)asset_texture_map.texture.width * 
+            cast(u32)asset_texture_map.texture.height;
+        
+        if asset_texture_map.track_filenames.count > 0 {
+            for 0 .. asset_texture_map.track_filenames.count - 1 {
+                texture_map_file_data.size += size_of(SJ_Track_Filename);
+            }
+        }
+        
+        texture_map_file_data.data = xx alloc(texture_map_file_data.size);
+        data := texture_map_file_data.data;
+        write_sj_asset_texture_map(*data, asset_texture_map);
+        array_add(*file_datas.texture_map_datas, texture_map_file_data);
+        
+        if single_files {
+            filename := sprint("%/%.%", resources_directory, asset_texture_map.asset_id, "sj5k_texture_map");
+            delete_file(filename);
+            written := write_file(filename, texture_map_file_data.data, texture_map_file_data.size);
+        }
+        
+        size_of_texture_maps += texture_map_file_data.size;
+    }
+    
+    
+    total_size:u32 = 
+        size_of(SJ_Header) + 
         size_of_sprite_atlases + 
         size_of_sounds + 
         size_of_fonts + 
-        size_of_models;
+        size_of_models + 
+        size_of_texture_maps;
     
     
     
-    data: *u8 = cast(*u8)alloc(total_size);
-    data_start: *u8 = data;
-    defer free(data_start);
-    
-    
-    header:= consume_data(*data, SJ_Header);
-    header.code               = magic_number("sj5k");
-    header.asset_count        = 0;
-    header.sprite_atlas_count = 0;
-    header.sound_count        = 0;
-    header.font_count         = 0;
-    header.model_count        = 0;
-    
-    
-    for *asset: assets.sprite_atlases {
-        if it_index == assets.sprite_atlas_count break;
-        write_sj_asset_sprite_atlas(*data, asset, cast(u32)it_index);
+    if bundle {
+        bundle_data: *u8 = xx alloc(total_size);
+        bundle_data_start := bundle_data;
+        defer free(bundle_data_start);
         
-        header.sprite_atlas_count += 1;
-        header.asset_count += 1;
+        
+        header:= consume_data(*bundle_data, SJ_Header);
+        header.code               = magic_number("sj5k");
+        header.asset_count        = 0;
+        header.sprite_atlas_count = 0;
+        header.sound_count        = 0;
+        header.font_count         = 0;
+        header.model_count        = 0;
+        header.texture_map_count  = 0;
+        
+        
+        
+        
+        for data: file_datas.sprite_datas {
+            if it_index == assets.sprite_atlas_count break;
+            if data.size == 0 continue; // WIERD.
+            atlas_data := consume_data_size(*bundle_data, data.size);
+            copy_data(atlas_data, data.data, data.size);
+            
+            header.sprite_atlas_count += 1;
+            header.asset_count += 1;
+        }
+        
+        for data: file_datas.sound_datas {
+            if it_index == assets.sound_count break;
+            if data.size == 0 continue; // WIERD.
+            sound_data := consume_data_size(*bundle_data, data.size);
+            copy_data(sound_data, data.data, data.size);
+            
+            header.sound_count += 1;
+            header.asset_count += 1;
+        }
+        
+        for data: file_datas.font_datas {
+            if it_index == assets.font_count break;
+            if data.size == 0 continue; // WIERD.
+            font_data := consume_data_size(*bundle_data, data.size);
+            copy_data(font_data, data.data, data.size);
+            
+            header.font_count  += 1;
+            header.asset_count += 1;
+        }
+        
+        for data: file_datas.texture_map_datas {
+            if it_index == assets.texture_map_count break;
+            if data.size == 0 continue;
+            texture_map_data := consume_data_size(*bundle_data, data.size);
+            copy_data(texture_map_data, data.data, data.size);
+            
+            header.texture_map_count += 1;
+            header.asset_count       += 1;
+            
+        }
+        
+        for data: file_datas.model_datas {
+            if it_index == assets.model_count break;
+            if data.size == 0 continue;
+            model_data := consume_data_size(*bundle_data, data.size);
+            copy_data(model_data, data.data, data.size);
+            
+            header.model_count += 1;
+            header.asset_count += 1;
+            
+        }
+        
+        asset_bundle_filename := "../resources/asset_bundle_0_0_6.sj5k";
+        delete_file(asset_bundle_filename);
+        written := write_file(asset_bundle_filename, cast(*void)bundle_data_start, total_size);
+        
     }
-    
-    for *asset: assets.sounds {
-        if it_index == assets.sound_count break;
-        if asset.file_type == .Unknown continue;
-        
-        write_sj_asset_sound(*data, asset, cast(u32)it_index);
-        
-        header.sound_count += 1;
-        header.asset_count += 1;
-    }
-    
-    for *asset: assets.fonts {
-        if it_index == assets.font_count break;
-        write_sj_asset_font(*data, asset, cast(u32)it_index);
-        
-        header.font_count += 1;
-        header.asset_count += 1;
-    }
-    
-    
-    for *asset: assets.models {
-        if it_index == assets.model_count break;
-        write_sj_asset_model(*data, asset, cast(u32)it_index);
-        
-        header.model_count += 1;
-        header.asset_count += 1;
-        
-    }
-    
-    written := write_file("../resources/asset_bundle_0_0_5.sj5k", cast(*void)data_start, total_size);
-    
-    return written;
-    
 }
