@@ -19,6 +19,7 @@
 #import "obj";
 #import "fbx";
 #import "animation_graph";
+#import "asset_details";
 
 
 
@@ -29,21 +30,28 @@
 MAX_ATLAS_SPRITES :: 1024;
 DESIRED_GLYPHS_ALL :: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!?@#$%^&*()-=_+[]{}\\/|<>,.;':\"`~ ";
 
+Asset_Base :: struct {
+    id:              u32;
+    asset_id:        string;
+    file_type:       File_Type;
+    filename:        string;
+    track_filenames: [..]string;
+}
+
 
 
 Asset_Sprite :: struct {
-    id: u32;
-    asset_id: string;
+    using #as base: Asset_Base;
+    
     texture_index: u32;
-    file_type: File_Type;
-    filename: string;
     uv: Rect;
     texture: Texture;
 }
 
 
 Asset_Sprite_Atlas :: struct {
-    id: u32;
+    using #as base: Asset_Base;
+    
     sprites: [MAX_ATLAS_SPRITES]Asset_Sprite;
     sprite_count: u32;
     texture: Texture;
@@ -52,72 +60,63 @@ Asset_Sprite_Atlas :: struct {
 
 
 Asset_Sound :: struct {
-    id: u32;
-    asset_id: string;
+    using #as base: Asset_Base;
+    
     snd: Sound;
-    filename: string;
-    file_type: File_Type;
 }
 
 Asset_Font :: struct {
-    id: u32;
-    asset_id: string;
-    atlas: Texture;
-    fonts: [..]Font;
+    using #as base: Asset_Base;
+    
+    atlas:                 Texture;
+    fonts:                 [..]Font;
     glyphs_sorted_by_size: [..]*Glyph;
     
-    filename: string;
-    desired_pixel_sizes: [..]u16;
-    asset_ids: [..]string;
-    desired_glyphs: string;
+    desired_pixel_sizes:   [..]u16;
+    asset_ids:             [..]string;
+    desired_glyphs:        string;
     
-    file_type: File_Type;
 }
 
 
 
 
 Asset_Material :: struct {
-    asset_id:  string;
-    file_type: File_Type;
-    filename:  string;
-    material:  Mesh_Material;
+    using #as base: Asset_Base;
+    
+    material: Mesh_Material;
 }
 
 Asset_Texture_Map :: struct {
-    id:        u32;
-    asset_id:  string;
-    file_type: File_Type;
-    filename:  string;
-    texture:   Texture;
+    using #as base: Asset_Base;
     
-    track_filenames: [..]string;
+    texture: Texture;
 }
 
 Asset_Animation :: struct {
-    asset_id:   string;
+    using #as base: Asset_Base;
+    
     model_id:   string;
-    file_type:  File_Type;
-    filename:   string;
     animations: [..]*Animation;
 }
 
 Asset_Model :: struct {
-    id:         u32;
-    asset_id:   string;
-    file_type:  File_Type;
-    filename:   string;
-    model:      Model;
+    using #as base: Asset_Base;
     
-    track_filenames: [..]string;
+    model: Model;
+    asset_details: Asset_Details;
 }
 
 Asset_Animation_Graph :: struct {
-    id:        u32;
-    asset_id:  string;
-    file_type: File_Type;
-    filename:  string;
-    graph:     Animation_Graph;
+    using #as base: Asset_Base;
+    
+    graph: Animation_Graph;
+}
+
+Asset_Asset_Details :: struct {
+    using #as base: Asset_Base;
+    
+    details: Asset_Details;
 }
 
 
@@ -161,6 +160,9 @@ Asset_Files :: struct {
     
     animation_graphs: [MAX_MODELS]Asset_Animation_Graph;
     animation_graph_count: u32;
+    
+    asset_details: [MAX_MODELS]Asset_Asset_Details;
+    asset_detail_count: u32;
     
     
     texture_id_counter: u32;
@@ -298,6 +300,16 @@ add_animation_graph :: (files: *Asset_Files, file_info: File_Info) {
     asset.filename  = copy_string(file_info.relative_path_and_filename);
     files.animation_graphs[files.animation_graph_count] = asset;
     files.animation_graph_count += 1;
+}
+
+add_asset_details :: (files: *Asset_Files, file_info: File_Info) {
+    assert(files.animation_graph_count < MAX_MODELS);
+    asset: Asset_Asset_Details = .{};
+    asset.asset_id  = file_info.name;
+    asset.file_type = file_info.type;
+    asset.filename  = copy_string(file_info.relative_path_and_filename);
+    files.asset_details[files.asset_detail_count] = asset;
+    files.asset_detail_count += 1;
 }
 
 
@@ -513,6 +525,28 @@ load_animation_graph :: (asset: *Asset_Animation_Graph) {
 }
 
 
+load_asset_details :: (asset: *Asset_Asset_Details) {
+    
+    file_result: File_Result = read_file(asset.filename);
+    defer free_file(file_result);
+    
+    if (file_result.content_size) {
+        if (asset.file_type == .Asset_Details) {
+            
+            asset.details = asset_details_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size,
+                                               asset.asset_id);
+            
+        } else {
+            print("unimplemented asset details file type: %\n", asset.file_type);
+        }
+    }
+    else {
+        print("err (conent_size): %\n", file_result.content_size);
+    }
+}
+
+
+
 
 
 
@@ -560,6 +594,8 @@ visit_model_files :: (file_info: File_Info, data: *void) {
         if should_gather(names, file_info.name) add_texture_map(asset_files, file_info);
         case .Animation_Graph;
         if should_gather(names, file_info.name) add_animation_graph(asset_files, file_info);
+        case .Asset_Details;
+        if should_gather(names, file_info.name) add_asset_details(asset_files, file_info);
     }
 }
 
@@ -837,19 +873,32 @@ main :: () {
             
             array_add(*asset.track_filenames, asset.filename);
         }
-        for *asset: files.animations {
-            if it_index == files.animation_count break;
-            load_animation(asset);
-        }
         for *asset: files.animation_graphs {
             if it_index == files.animation_graph_count break;
             load_animation_graph(asset);
         }
-        
+        for *asset: files.animations {
+            if it_index == files.animation_count break;
+            load_animation(asset);
+        }
+        for *asset: files.asset_details {
+            if it_index == files.asset_detail_count break;
+            load_asset_details(asset);
+        }
         
         
         for *model_asset: files.models {
             if it_index == files.model_count break;
+            
+            for asset_details_asset: files.asset_details {
+                if asset_details_asset.asset_id == model_asset.asset_id {
+                    model_asset.asset_details = asset_details_asset.details;
+                    array_add(*model_asset.track_filenames, asset_details_asset.filename);
+                    break;
+                }
+            }
+            
+            
             load_model(model_asset);
             
             array_add(*model_asset.track_filenames, model_asset.filename);
@@ -979,6 +1028,7 @@ main :: () {
                     }
                 }
             }
+            
             
             
             

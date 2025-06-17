@@ -30,7 +30,7 @@ Mesh_Triangle :: struct {
 Mesh :: struct {
     name:           string;
     triangles:      [..]Mesh_Triangle;
-    vertices :      [..]V3;
+    vertices:       [..]V3;
     normals:        [..]V3;
     tangents:       [..]V3;
     uvs:            [..]V2;
@@ -49,10 +49,10 @@ Mesh :: struct {
 
 Model :: struct {
     name: string;
-    meshes: [..]*Mesh;
-    skeletons: [..]*Bone;
-    bone_count: u32;
-    animations: [..]*Animation;
+    meshes:          [..]*Mesh;
+    skeletons:       [..]*Bone;
+    bone_count:      u32;
+    animations:      [..]*Animation;
     animation_graph: Animation_Graph;
 }
 

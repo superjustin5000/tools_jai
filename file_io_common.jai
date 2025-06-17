@@ -29,6 +29,7 @@ File_Type :: enum {
     FBX;
     MTL;
     Animation_Graph; //custom .animation_graph extension.
+    Asset_Details; //custom .asset_details extension.
 };
 
 
@@ -92,6 +93,9 @@ get_file_type :: (filename: string) -> File_Type, string {
         
         case "animation_graph";
         type = .Animation_Graph;
+        
+        case "asset_details";
+        type = .Asset_Details;
     }
     
     index_of_last_dot := find_index_from_right(filename, #char ".");

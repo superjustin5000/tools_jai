@@ -7,7 +7,7 @@
 #import "file_io_common";
 #import "model";
 #import "deflate";
-
+#import "asset_details";
 
 /*
 FBX sources:
@@ -664,6 +664,8 @@ FBX_Global_Settings :: struct {
     time_mode:                  FBX_Frame_Rate = .Default;
     custom_frame_rate:          f32 = -1.0;
     actual_frame_rate:          f32 = 30.0;
+    
+    asset_details:              Asset_Details;
 }
 
 frame_rate_from_time_mode :: (settings: *FBX_Global_Settings) -> f32 {
@@ -1886,8 +1888,7 @@ gather_prop_matrix :: (prop: *FBX_Property, matrix: *Matrix4) {
 parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node, settings: *FBX_Global_Settings) {
     
     if object.type == .Root {
-        // object.xform_matrix = identity_matrix();
-        a := 0;
+        
     }
     
     object.position        = find_property_node_v3(node, "Lcl Translation");
@@ -1899,6 +1900,7 @@ parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node, settings:
     object.scale_offset    = find_property_node_v3(node, "ScalingOffset");
     object.scale_pivot     = find_property_node_v3(node, "ScalingPivot");
     object.scale           = find_property_node_v3(node, "Lcl Scaling");
+    
     
     p:     = translation_matrix(object.position);
     ro:    = translation_matrix(object.rotation_offset);
@@ -1912,6 +1914,8 @@ parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node, settings:
     sp:    = translation_matrix(object.scale_pivot);
     _sp:   = inverse(sp);
     s:     = scaling_matrix(object.scale);
+    
+    
     xform: = p * ro * rp * pre * r * _post * _rp * so * sp * s * _sp;
     
     // xform  = settings.desired_basis_xform * xform;
@@ -2940,7 +2944,6 @@ fbx_load_additional_animations :: (fbx_data: *u8, fbx_data_size: u64, animation_
     push_allocator(temp);
     scene := fbx_parse_data_into_scene(fbx_data, fbx_data_size);
     
-    
     skeletons, bone_count: = build_skeletons(scene);
     animations:            = build_animations(scene, animation_name);
     
@@ -3000,10 +3003,8 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         mesh.world_to_mesh = model_world_to_mesh;
         
         
-        
         for v: geometry.vertices {
-            // TODO this step shoudl be done later, since the values in the vertex_indices 
-            // array can be negative.... duh.
+            
             found, index: = array_find(geometry.vertex_indices, cast(s32)it_index);
             if found {
                 as_last_index := ((cast(s32)it_index + 1) * -1);
@@ -3013,6 +3014,7 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                 // print("Vertex index found to be dead: %\n", it_index);
                 array_add(*mesh.dead_vertices, cast(u32)it_index);
             }
+            
             array_add(*mesh.vertices, v);
         }
         
