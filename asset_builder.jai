@@ -197,7 +197,8 @@ add_sprite_atlas :: (files: *Asset_Files, width: u16, height: u16) {
     atlas_builder_init(*files.atlas_builder, width, height);
     
     asset: *Asset_Sprite_Atlas = *(files.sprite_atlases[files.sprite_atlas_count]);
-    asset.id      = get_texture_id(files);
+    asset.id       = get_texture_id(files);
+    asset.asset_id = sprint("%", asset.id);
     asset.texture = files.atlas_builder.texture;
     
     files.sprite_atlas_count += 1;
@@ -608,12 +609,13 @@ main :: () {
     directory_sounds  := "../resources/sounds";
     directory_fonts   := "../resources/fonts";
     
-    produce_bundle_asset_file   := true;
-    dump_individual_asset_files := true;
-    process_models              := true;
-    process_sprites             := true;
-    process_sounds              := true;
-    process_fonts               := true;
+    bundle_file             := true;
+    single_files            := true;
+    single_files_descriptor := true;
+    process_models          := true;
+    process_sprites         := true;
+    process_sounds          := true;
+    process_fonts           := true;
     
     
     files: *Asset_Files = cast(*Asset_Files)alloc(size_of(Asset_Files));
@@ -639,30 +641,71 @@ main :: () {
             }
             
             if arg == "model" {
-                if next.count == 0 invalid_code_path("Command 'model' found but no name specified.");
+                if next.count == 0 invalid_code_path("Argument 'model' found but no name specified.");
                 
                 it += 1;
                 
                 array_add(*visit_files_proc_data.names, next);
                 
-                process_sprites           = false;
-                process_sounds            = false;
-                process_fonts             = false;
-                produce_bundle_asset_file = false;
+                process_sprites = false;
+                process_sounds  = false;
+                process_fonts   = false;
+                bundle_file     = false;
+                single_files_descriptor = false;
                 
             } else if arg == "texture_map" {
-                if next.count == 0 invalid_code_path("Command 'texture_map' found but no name specified.");
+                if next.count == 0 invalid_code_path("Argument 'texture_map' found but no name specified.");
                 
                 it += 1;
                 
                 array_add(*visit_files_proc_data.names, next);
                 
-                process_sprites           = false;
-                process_sounds            = false;
-                process_fonts             = false;
-                produce_bundle_asset_file = false;
+                process_sprites = false;
+                process_sounds  = false;
+                process_fonts   = false;
+                bundle_file     = false;
+                single_files_descriptor = false;
                 
-            }else if arg == "no_models" {
+            } else if arg == "sprite_atlas" {
+                if next.count == 0 invalid_code_path("Argument 'sprite_atlas' found but no name specified.");
+                
+                it += 1;
+                
+                array_add(*visit_files_proc_data.names, next);
+                
+                process_models = false;
+                process_sounds = false;
+                process_fonts  = false;
+                bundle_file    = false;
+                single_files_descriptor = false;
+                
+            } else if arg == "sound" {
+                if next.count == 0 invalid_code_path("Argument 'sound' but no name specified.");
+                
+                it += 1;
+                
+                array_add(*visit_files_proc_data.names, next);
+                
+                process_models  = false;
+                process_sprites = false;
+                process_fonts   = false;
+                bundle_file     = false;
+                single_files_descriptor = false;
+                
+            } else if arg == "font" {
+                if next.count == 0 invalid_code_path("Argument 'font' found but no name specified.");
+                
+                it += 1;
+                
+                array_add(*visit_files_proc_data.names, next);
+                
+                process_models  = false;
+                process_sprites = false;
+                process_sounds  = false;
+                bundle_file     = false;
+                single_files_descriptor = false;
+                
+            } else if arg == "no_models" {
                 process_models = false;
                 
             } else if arg == "no_sprites" {
@@ -675,15 +718,16 @@ main :: () {
                 process_fonts = false;
                 
             } else if arg == "no_dump" {
-                dump_individual_asset_files = false;
+                single_files            = false;
+                single_files_descriptor = false;
                 
             } else if arg == "no_bundle" {
-                produce_bundle_asset_file   = false;
+                bundle_file   = false;
                 
             } else if arg == "no_files" {
-                produce_bundle_asset_file   = false;
-                dump_individual_asset_files = false;
-                
+                bundle_file             = false;
+                single_files            = false;
+                single_files_descriptor = false;
             }
         }
         
@@ -933,12 +977,6 @@ main :: () {
                 }
                 
                 for material: mesh.materials {
-                    for 0 .. Mesh_Texture_Type.Count - 1 {
-                        material.texture_map_ids[it] = -1;
-                    }
-                }
-                
-                for material: mesh.materials {
                     
                     for 0 .. Mesh_Texture_Type.Count - 1 {
                         
@@ -952,7 +990,7 @@ main :: () {
                                 if it_index == files.texture_map_count break;
                                 
                                 if equal_nocase(tex.asset_id, name) {
-                                    material.texture_map_ids[tm_index] = xx tex.id;
+                                    material.texture_map_ids[tm_index] = copy_string(tex.asset_id);
                                     break;
                                 }
                                 
@@ -961,6 +999,8 @@ main :: () {
                         
                     }
                 }
+                
+                
                 
                 
                 // moving all vertices around origin.
@@ -1036,7 +1076,7 @@ main :: () {
         
     }
     
-    save_final_asset_files(files, produce_bundle_asset_file, dump_individual_asset_files);
+    save_final_asset_files(files, bundle_file, single_files, single_files_descriptor);
     
 }
 

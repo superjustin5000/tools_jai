@@ -144,10 +144,16 @@ png_set_pixel_color_by_byte :: (pixel: *Pixel, pixel_byte: u8, byte_data: u8, co
         pixel.r = byte_data;
         
         if color_type == .IDX {
-            pixel.r = (plte + byte_data).r;
-            pixel.g = (plte + byte_data).g;
-            pixel.b = (plte + byte_data).b;
-            pixel.a = <<(alpha_table + byte_data);
+            palette_color := plte + byte_data;
+            pixel.r = palette_color.r;
+            pixel.g = palette_color.g;
+            pixel.b = palette_color.b;
+            if (equal(pixel, alpha_pixel)) {
+                pixel.a = 0;
+            }
+            else {
+                pixel.a = 255;
+            }
         }
     }
     else if (pixel_byte == 1) {
@@ -193,12 +199,13 @@ png_load :: (png_data: *u8, png_data_size: u64) -> Texture {
     color_type: Color_Type = .RGBA;
     interlace: = false;
     
-    //for color type rgb
+    //for color type rgb, or index color with no alpha table.
     alpha_pixel: Pixel;
     
     // for index color
     color_palette_table: *Color24 = null;
     alpha_table: *u8 = null;
+    background_set := false;
     
     data: Consumeable_Data_Block = get_consumeable_data_block(png_data, png_data_size);
     
@@ -269,32 +276,49 @@ png_load :: (png_data: *u8, png_data_size: u64) -> Texture {
                         
                         endian_swap(*(chunk_header.length));
                         
+                        plte_found := color_palette_table != null;
+                        
                         if chunk_header.type == magic_number("PLTE") {
-                            
+                            if (plte_found) invalid_code_path("Only one PLTE chunk allowed.\n");
                             assert(chunk_header.length % 3 == 0);
                             
                             color_palette_table = cast(*Color24)consume_data_size(*data, chunk_header.length);
                             
                             
-                        } 
-                        else if chunk_header.type == magic_number("tRNS") {
-                            
+                        } else if chunk_header.type == magic_number("tRNS") {
+                            if !plte_found {
+                                invalid_code_path("tRNS must be after PLTE but no valid PLTE found.\n");
+                            }
                             alpha_table = cast(*u8)consume_data_size(*data, chunk_header.length);
                             
-                        }
-                        else {
+                        } else if chunk_header.type == magic_number("bKGD") {
+                            if !plte_found {
+                                invalid_code_path("bKGD in indexed color requires PLTE prior.\n");
+                            }
+                            color_palette_index := cast(*u8)consume_data_size(*data, chunk_header.length);
+                            palette_color := color_palette_table + <<color_palette_index;
+                            alpha_pixel.r = palette_color.r;
+                            alpha_pixel.g = palette_color.g;
+                            alpha_pixel.b = palette_color.b;
+                            background_set = true;
+                            
+                        } else {
+                            print("IDX type chunk_header.type: %\n", magic_number_to_string(chunk_header.type));
                             consume_data_size(*data, chunk_header.length);
+                            
                         }
                         
                         consume_data(*data, PNG_Chunk_Footer);
                         
-                        if color_palette_table != null && alpha_table != null {
+                        if (color_palette_table != null &&
+                            (alpha_table != null || background_set)) {
                             break;
                         }
                         
                     }
                     
-                    assert(color_palette_table != null && alpha_table != null);
+                    assert(color_palette_table != null &&
+                           (alpha_table != null || background_set));
                     
                 }
                 

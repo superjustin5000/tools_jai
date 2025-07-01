@@ -24,6 +24,8 @@ Animation_State :: struct {
     next_state:       string;
     next_state_index: s64;
     looping:          bool;
+    start_time:       f32;
+    stop_time:        f32;
 }
 
 
@@ -67,8 +69,7 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
                 
                 if command_name == "#state" {
                     state := Animation_State.{};
-                    state.name             = command_value;
-                    state.looping          = true;
+                    state.name = command_value;
                     
                     array_add(*graph.states, state);
                     current_state_index += 1;
@@ -95,7 +96,15 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
                 
             } else if property_name == "next_state" {
                 state.next_state = property_value;
-                state.looping    = false;
+                
+            } else if property_name == "loop" {
+                state.looping = true;
+                
+            } else if property_name == "start_time" {
+                state.start_time = parse_float(*property_value);
+                
+            } else if property_name == "stop_time" {
+                state.stop_time = parse_float(*property_value);
                 
             }
         }
@@ -105,6 +114,7 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
     
     
     
+    graph.initial_state = -1;
     if initial_state_name.count > 0 {
         for graph.states {
             if initial_state_name == it.name {

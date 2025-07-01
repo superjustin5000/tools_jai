@@ -751,6 +751,7 @@ main :: () {
     array_add(*filenames, "../code/level.h");
     array_add(*filenames, "../code/physics.h");
     array_add(*filenames, "../code/platform.h");
+    array_add(*filenames, "../code/mathh.h");
     array_add(*filenames, "../code/types.h");
     
     

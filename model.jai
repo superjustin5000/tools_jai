@@ -89,7 +89,7 @@ Animation_Transform :: struct {
 }
 
 Animation_Frame :: struct {
-    mesh_transform:  Animation_Transform;
+    mesh_transforms: [..]Animation_Transform;
     bone_transforms: [..]Animation_Transform;
     // NOTE: if the mesh transform ever looks off. Then it 
     // might be because the transforms are local and it doesn't
@@ -122,7 +122,7 @@ Mesh_Material :: struct {
     alpha:             f32;
     illum:             u32;
     texture_map_files: [Mesh_Texture_Type.Count]string;
-    texture_map_ids:   [Mesh_Texture_Type.Count]s32;
+    texture_map_ids:   [Mesh_Texture_Type.Count]string;
 }
 
 
@@ -136,12 +136,17 @@ mesh_triangle_fix_winding_order :: (mesh: *Mesh, triangle: *Mesh_Triangle) {
     edge2 := v3 - v1;
     
     normal := cross(edge1, edge2);
+    normal = normalize(normal);
     
+    // This will ensure that the winding order will produce the normal expected.
     n1 := mesh.normals[triangle.v1.normal_index];
     if dot(n1, normal) < 0 {
         temp := triangle.v3;
         triangle.v3 = triangle.v1;
         triangle.v1 = temp;
     }
+    
+    // Now check if the winding order is clockwise, if so, reverse it and invert the normal.
+    
     
 }

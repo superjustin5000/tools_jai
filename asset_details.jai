@@ -2,8 +2,9 @@
 
 #import "Basic";
 #import "String";
-#import "common";
+#import "Math";
 
+#import "common";
 #import "file_io_common";
 
 
@@ -16,6 +17,7 @@ Asset_Detail :: struct {
     x: f32;
     y: f32;
     z: f32;
+    m: Matrix4;
 }
 
 Asset_Details :: struct {
@@ -27,6 +29,7 @@ Asset_Detail_Type :: enum {
     Translation;
     Rotation;
     Scale;
+    Xform;
     
     Count;
 }
@@ -119,5 +122,35 @@ asset_details_load :: (file_data: *u8, file_data_size: u64, name: string) -> Ass
         line_exists, line = get_next_line(*data);
         
     }
+    
+    has_xform := false;
+    t_matrix := translation_matrix(V3.{x=0,y=0,z=0});
+    s_matrix := scaling_matrix(V3.{x=1,y=1,z=1});
+    r_matrix := rotation_matrix(quaternion(V3.{x=0,y=0,z=0}));
+    for details.details {
+        if it.type == .Rotation {
+            rotation := V3.{x=it.x,y=it.y,z=it.z};
+            r_matrix = rotation_matrix(quaternion(rotation));
+            has_xform = true;
+            
+        } else if it.type == .Scale {
+            scaling := V3.{x=it.x,y=it.y,z=it.z};
+            s_matrix = scaling_matrix(scaling);
+            has_xform = true;
+            
+        } else if it.type == .Translation {
+            translation := V3.{x=it.x,y=it.y,z=it.z};
+            t_matrix = translation_matrix(translation);
+            has_xform = true;
+            
+        }
+    }
+    if has_xform {
+        xform_detail:      = Asset_Detail.{};
+        xform_detail.type  = .Xform;
+        xform_detail.m     = t_matrix * r_matrix * s_matrix;
+        array_add(*details.details, xform_detail);
+    }
+    
     return details;
 }

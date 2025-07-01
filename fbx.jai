@@ -26,6 +26,7 @@ FBX_Object_Type :: enum {
     Material;
     Mesh;
     Texture;
+    Layered_Texture;
     Limb_Node;
     Null_Node;
     Camera;
@@ -83,12 +84,19 @@ FBX_Pose :: struct {
 }
 
 
+
 FBX_Texture :: struct {
     using #as base: FBX_Object;
     
     filename:          string;
     relative_filename: string;
     data:              string;
+}
+
+FBX_Layered_Texture :: struct {
+    using #as base: FBX_Object;
+    
+    textures: [..]*FBX_Texture;
 }
 
 
@@ -106,6 +114,7 @@ FBX_Material :: struct {
     using #as base: FBX_Object;
     
     textures:         [Mesh_Texture_Type.Count]*FBX_Texture;
+    layered_textures: [Mesh_Texture_Type.Count]*FBX_Layered_Texture;
     diffuse_color:    Color;
     specular_color:   Color;
     reflection_color: Color;
@@ -1263,6 +1272,10 @@ parse_objects :: (scene: *FBX_Scene) {
             texture := fbx_object(.Texture, FBX_Texture, *obj);
             parse_texture(it.node, texture);
             
+        } else if it.node.id == "LayeredTexture" {
+            layered_texture := fbx_object(.Layered_Texture, FBX_Layered_Texture, *obj);
+            parse_layered_texture(it.node, layered_texture);
+            
         } else if it.node.id == "Video" {
             // DO THIS MAYBE.
             
@@ -1381,8 +1394,10 @@ parse_objects :: (scene: *FBX_Scene) {
             }
             case .Material; {
                 mat := cast(*FBX_Material)parent;
-                if child.type == .Texture {
+                
+                if child.type == .Texture || child.type == .Layered_Texture {
                     type: Mesh_Texture_Type;
+                    
                     if conn.to_property == {
                         case "NormalMap"; {
                             type = .Normal;
@@ -1408,12 +1423,24 @@ parse_objects :: (scene: *FBX_Scene) {
                     }
                     if type < .Count {
                         if mat.textures[type] == null {
-                            mat.textures[type] = cast(*FBX_Texture)child;
+                            if child.type == .Texture {
+                                mat.textures[type] = cast(*FBX_Texture)child;
+                                
+                            } else if child.type == .Layered_Texture {
+                                mat.layered_textures[type] = cast(*FBX_Layered_Texture)child;
+                                
+                            }
                         } else {
                             // NOTE If it's not null then maybe there are multiple of that
                             // map type on the material, which we do not support.
                         }
                     }
+                    
+                } else if child.type == .Layered_Texture {
+                    
+                    type: Mesh_Texture_Type;
+                    
+                    
                 }
             }
             case .Mesh; {
@@ -1446,7 +1473,20 @@ parse_objects :: (scene: *FBX_Scene) {
                 
             }
             case .Texture; {
+                
             }
+            case .Layered_Texture; {
+                
+                layered_texture := cast(*FBX_Layered_Texture)parent;
+                
+                if child.type == .Texture {
+                    texture := cast(*FBX_Texture)child;
+                    array_add(*layered_texture.textures, texture);
+                    
+                }
+                
+            }
+            
             case .Limb_Node; {
                 
                 limb_node := cast(*FBX_Limb_Node)parent;
@@ -1623,6 +1663,9 @@ parse_objects :: (scene: *FBX_Scene) {
             }
             case .Animation_Stack; {
                 post_parse_animation_stack(xx it.object, scene);
+            }
+            case .Material; {
+                post_parse_material(xx it.object);
             }
         }
     }
@@ -2101,6 +2144,12 @@ parse_texture :: (node: *FBX_Node, tex: *FBX_Texture) {
     if relative_filename_node != null && relative_filename_node.properties.count > 0 {
         tex.relative_filename = relative_filename_node.properties[0].value;
     }
+}
+
+parse_layered_texture :: (node: *FBX_Node, tex: *FBX_Layered_Texture) {
+    
+    a := 0;
+    
 }
 
 
@@ -2703,7 +2752,17 @@ post_parse_animation_stack :: (stack: *FBX_Animation_Stack, scene: *FBX_Scene) {
 
 
 
-
+post_parse_material :: (material: *FBX_Material) {
+    
+    for material.layered_textures {
+        if it != null {
+            if (it.textures.count == 0) { invalid_code_path("No textures linked to layered texture.\n");
+            }
+            material.textures[it_index] = it.textures[0];
+        }
+    }
+    
+}
 
 
 
@@ -2825,7 +2884,6 @@ build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
         frame_count: = layer.frame_count;
         for 0 .. frame_count-1 {
             frame := Animation_Frame.{};
-            frame.mesh_transform.object_id = -1;
             array_add(*animation.frames, frame);
             array_add(*animation.frame_times, 0);
         }
@@ -2865,9 +2923,23 @@ build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
                     }
                     
                 } else if curve_node.link.type == .Mesh {
-                    mesh_id = xx (cast(*FBX_Mesh)curve_node.link).mesh_id;
-                    transform           = *frame.mesh_transform;
-                    transform.object_id = mesh_id;
+                    
+                    mesh_id = xx (cast(*FBX_Mesh)curve_node.link).mesh_id; 
+                    
+                    for * frame.mesh_transforms {
+                        if it.object_id == mesh_id {
+                            transform = it;
+                            break;
+                        }
+                    }
+                    
+                    if transform == null {
+                        xform := Animation_Transform.{};
+                        xform_index := frame.mesh_transforms.count;
+                        array_add(*frame.mesh_transforms, xform);
+                        transform = frame.mesh_transforms.data + xform_index;
+                        transform.object_id = mesh_id;
+                    }
                 }
                 
                 transform.ref_id = curve_node.link.id;
@@ -2910,15 +2982,12 @@ build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
         // iterate over all of them and evalulate 
         // local transforms.
         for *frame: animation.frames {
-            if frame.mesh_transform.object_id >= 0 {
-                transform := *frame.mesh_transform;
+            for *transform: frame.mesh_transforms {
+                transform.local = evaluate_animation_transform(transform, scene);
+            }
+            for *transform: frame.bone_transforms {
                 transform.local = evaluate_animation_transform(transform, scene);
                 
-            } else {
-                for *transform: frame.bone_transforms {
-                    transform.local = evaluate_animation_transform(transform, scene);
-                    
-                }
             }
         }
         

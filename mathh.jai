@@ -377,6 +377,18 @@ dot :: (a: V3, b: V3) -> f32 {
 }
 
 
+length :: (v: V3) -> f32 {
+    result := sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    return result;
+}
+
+normalize :: (vector: V3) -> V3 {
+    if vector.x == 0 && vector.y == 0 && vector.z == 0 return vector;
+    len := length(vector);
+    result := vector * (1.0 / len);
+    return result;
+}
+
 
 rotate_shear_ccw :: (point:V2, turns:f32) -> V2 {
 	tan:f32 = ttan(turns / 2.0);
