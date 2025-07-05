@@ -1,4 +1,4 @@
-
+// TODO: Add versioning to the individual asset files.
 
 // NOTE(justin): This file is meant to be #load-ed into asset_builder.jai
 // as it still depends on some of those types.
@@ -6,33 +6,35 @@
 
 
 
-//NOTE(justin): has to be u32 because currently being read by cpp file that has a redefinition of same
-// MATCHES WITH: asset_file.h
-SJ_Asset_Type :: enum u32 {
+//NOTE(justin): has to be u32 because currently being read by cpp file that assumes a definition
+// MATCHES WITH: assets.h (enum of the same name)
+Asset_Type :: enum u32 {
     None         :: 0;
-    Sprite_Atlas :: 1;
+    Sprite       :: 1;
     Sound        :: 2;
     Font         :: 3;
-    Model        :: 4;
-    Texture_Map  :: 5;
+    Shader       :: 4;
+    Model        :: 5;
+    Texture      :: 6;
+    Material     :: 7;
 };
 
 
 
 SJ_Header :: struct {
-    code:               u32; // magic number to check file format
-    asset_count:        u32;
-    sprite_atlas_count: u32;
-    sound_count:        u32;
-    font_count:         u32;
-    model_count:        u32;
-    texture_map_count:  u32;
+    code:           u32; // magic number to check file format
+    asset_count:    u32;
+    sprite_count:   u32;
+    sound_count:    u32;
+    font_count:     u32;
+    model_count:    u32;
+    texture_count:  u32;
+    material_count: u32;
 }  
 
 
 SJ_Asset_Header :: struct {
-    id: u32;
-    type: SJ_Asset_Type;
+    type: Asset_Type;
     size_bytes: u32;
     track_filename_count: u32;
 } 
@@ -41,20 +43,23 @@ SJ_Track_Filename :: struct {
     filename: [128]u8;
 }
 
-SJ_Sprite_Atlas_Info :: struct {
-    width: u32;
-    height: u32;
-    sprite_count: u32;
-} 
+
+SJ_Texture_Info :: struct {
+    asset_id: [128]u8;
+    width:    u32;
+    height:   u32;
+}
+
 
 SJ_Sprite_Info :: struct {
-    id: u32;
-    asset_id: [128]u8;
-    uv: Rect;
+    asset_id:   [128]u8;
+    texture_id: [128]u8;
+    uv:         Rect;
+    width:      u32;
+    height:     u32;
 } 
 
 SJ_Sound_Info :: struct {
-    id:                 u32;
     asset_id:           [128]u8;
     bytes_per_sample:   u32;
     samples_per_second: u32;
@@ -72,15 +77,9 @@ SJ_Font_Glyph_Info :: struct {
     kerning:      [128]f32;
 } 
 
-SJ_Font_Atlas_Info :: struct {
-    width:      u32;
-    height:     u32;
-    size_count: u32;
-}
-
 SJ_Font_Info :: struct {
-    id:          u32;
     asset_id:    [128]u8;
+    texture_id:  [128]u8;
     pixel_size:  u32;
     height:      f32;
     line_height: f32;
@@ -90,24 +89,28 @@ SJ_Font_Info :: struct {
     glyph_count: u32;
 } 
 
-SJ_Texture_Map_Info :: struct {
-    id:       u32;
-    asset_id: [128]u8;
-    width:    u32;
-    height:   u32;
-}
 
 SJ_Mesh_Info :: struct {
-    id:              u32;
+    asset_id:       [128]u8;
+    triangle_count: u32;
+    mesh_to_world:  Matrix4;
+    world_to_mesh:  Matrix4;
+    material_count: u32;
+    material_ids:   [4][128]u8;
+}
+
+SJ_Material_Info :: struct {
     asset_id:        [128]u8;
-    triangle_count:  u32;
+    ambient_color:   Color;
+    diffuse_color:   Color;
+    specular_color:  Color;
+    shininess:       f32;
+    alpha:           f32;
+    illum:           u32;
     texture_map_ids: [Mesh_Texture_Type.Count][128]u8;
-    mesh_to_world:   Matrix4;
-    world_to_mesh:   Matrix4;
 }
 
 SJ_Model_Info :: struct {
-    id:                u32;
     asset_id:          [128]u8;
     mesh_count:        u32;
     skeleton_count:    u32;
@@ -173,16 +176,17 @@ SJ_Asset_Single_File_Data :: struct {
 };
 
 SJ_Asset_File_Datas :: struct {
-    model_datas       :[..]SJ_Asset_Single_File_Data;
-    texture_map_datas :[..]SJ_Asset_Single_File_Data;
-    sprite_datas      :[..]SJ_Asset_Single_File_Data;
-    sound_datas       :[..]SJ_Asset_Single_File_Data;
-    font_datas        :[..]SJ_Asset_Single_File_Data;
+    model_datas    :[..]SJ_Asset_Single_File_Data;
+    texture_datas  :[..]SJ_Asset_Single_File_Data;
+    material_datas :[..]SJ_Asset_Single_File_Data;
+    sprite_datas   :[..]SJ_Asset_Single_File_Data;
+    sound_datas    :[..]SJ_Asset_Single_File_Data;
+    font_datas     :[..]SJ_Asset_Single_File_Data;
 }
 
 SJ_Asset_Single_File_Info :: struct {
     asset_id: [128]u8;
-    type:     SJ_Asset_Type;
+    type:     Asset_Type;
     filename: [256]u8;
     track_filename_count: u32;
 }
@@ -200,59 +204,41 @@ copy_string_to_u8_array :: (dest: []u8, src: string) {
 
 
 
-write_asset_track_filenames :: (asset: *Asset_Base, data: **u8) {
+write_asset_track_filenames :: (resource: *Resource_Base, data: **u8) {
     
-    if asset.track_filenames.count > 0 {
-        for 0 .. asset.track_filenames.count - 1 {
+    if resource.track_filenames.count > 0 {
+        for 0 .. resource.track_filenames.count - 1 {
             track_file := consume_data(data, SJ_Track_Filename);
-            copy_string_to_u8_array(track_file.filename, asset.track_filenames[it]);
+            copy_string_to_u8_array(track_file.filename, resource.track_filenames[it]);
             
         }
     }
 }
 
 
-write_sj_asset_sprite_atlas :: (asset: *Asset_Sprite_Atlas) -> SJ_Asset_Single_File_Data {
+write_sj_asset_sprite :: (resource: *Resource_Sprite) -> SJ_Asset_Single_File_Data {
     
-    file_data := SJ_Asset_Single_File_Data.{};
-    file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Sprite_Atlas_Info);
-    file_data.size += size_of(SJ_Sprite_Info)  * asset.sprite_count;
-    file_data.size += cast(u32)asset.texture.width * cast(u32)asset.texture.height * size_of(Pixel);
-    file_data.size += size_of(SJ_Track_Filename) * cast(u32)asset.track_filenames.count;
+    file_data:      = SJ_Asset_Single_File_Data.{};
+    file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Sprite_Info);
+    file_data.size += size_of(SJ_Track_Filename) * cast(u32)resource.track_filenames.count;
     
     file_data.data = xx alloc(file_data.size);
     data_base     := file_data.data;
     data          := *data_base;
     
     asset_header:           = consume_data(data, SJ_Asset_Header);
-    asset_header.id         = asset.id;
-    asset_header.type       = .Sprite_Atlas;
+    asset_header.type       = .Sprite;
     asset_header.size_bytes = file_data.size;
-    asset_header.track_filename_count = xx asset.track_filenames.count;
+    asset_header.track_filename_count = xx resource.track_filenames.count;
     
-    info: = consume_data(data, SJ_Sprite_Atlas_Info);
-    info.width = asset.texture.width;
-    info.height = asset.texture.height;
-    info.sprite_count = asset.sprite_count;
+    info:       = consume_data(data, SJ_Sprite_Info);
+    info.uv     = resource.uv;
+    info.width  = resource.texture.width;
+    info.height = resource.texture.height;
+    copy_string_to_u8_array(info.asset_id, resource.id);
+    copy_string_to_u8_array(info.texture_id, resource.texture_id);
     
-    pixel_count: = cast(u32)asset.texture.width * cast(u32)asset.texture.height;
-    for pixel_index: 0 .. pixel_count-1 {
-        dest_pixel: = consume_data(data, Pixel);
-        src_pixel: = asset.texture.pixels + pixel_index;
-        <<dest_pixel = <<src_pixel;
-    }
-    
-    print("adding % sprites to sprite atlas\n", asset.sprite_count);
-    for sprite_index: 0 .. asset.sprite_count-1 {
-        src_sprite: *Asset_Sprite = asset.sprites.data + sprite_index;
-        dest_sprite: = consume_data(data, SJ_Sprite_Info);
-        dest_sprite.id = sprite_index;
-        dest_sprite.uv = src_sprite.uv;
-        copy_string_to_u8_array(dest_sprite.asset_id, src_sprite.asset_id);
-    }
-    
-    write_asset_track_filenames(asset, data);
-    
+    write_asset_track_filenames(resource, data);
     return file_data;
 }
 
@@ -260,12 +246,12 @@ write_sj_asset_sprite_atlas :: (asset: *Asset_Sprite_Atlas) -> SJ_Asset_Single_F
 
 
 
-write_sj_asset_sound :: (asset: *Asset_Sound) -> SJ_Asset_Single_File_Data {
+write_sj_asset_sound :: (resource: *Resource_Sound) -> SJ_Asset_Single_File_Data {
     
     file_data := SJ_Asset_Single_File_Data.{};
     file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Sound_Info);
-    file_data.size += asset.snd.size;
-    file_data.size += size_of(SJ_Track_Filename) * cast(u32)asset.track_filenames.count;
+    file_data.size += resource.snd.size;
+    file_data.size += size_of(SJ_Track_Filename) * cast(u32)resource.track_filenames.count;
     
     
     file_data.data = xx alloc(file_data.size);
@@ -273,18 +259,16 @@ write_sj_asset_sound :: (asset: *Asset_Sound) -> SJ_Asset_Single_File_Data {
     data          := *data_base;
     
     asset_header:           = consume_data(data, SJ_Asset_Header);
-    asset_header.id         = asset.id;
     asset_header.type       = .Sound;
     asset_header.size_bytes = file_data.size;
-    asset_header.track_filename_count = xx asset.track_filenames.count;
+    asset_header.track_filename_count = xx resource.track_filenames.count;
     
     info:= consume_data(data, SJ_Sound_Info);
-    info.id                 = asset.id;
-    info.bytes_per_sample   = asset.snd.bytesPerSample;
-    info.samples_per_second = asset.snd.samplesPerSecond;
-    info.channels           = asset.snd.channels;
-    info.size_bytes         = asset.snd.size;
-    copy_string_to_u8_array(info.asset_id, asset.asset_id);
+    info.bytes_per_sample   = resource.snd.bytesPerSample;
+    info.samples_per_second = resource.snd.samplesPerSecond;
+    info.channels           = resource.snd.channels;
+    info.size_bytes         = resource.snd.size;
+    copy_string_to_u8_array(info.asset_id, resource.id);
     
     sample_size: u32 = info.bytes_per_sample * info.channels;
     samples:     u32 = info.size_bytes / sample_size;
@@ -293,70 +277,56 @@ write_sj_asset_sound :: (asset: *Asset_Sound) -> SJ_Asset_Single_File_Data {
         for channel: 0..info.channels-1 {
             index:u32  = (sample * info.channels) + channel;
             dest_snd:  = consume_data(data, s16);
-            <<dest_snd = <<(asset.snd.data + index);
+            <<dest_snd = <<(resource.snd.data + index);
         }
     }
     
-    write_asset_track_filenames(asset, data);
+    write_asset_track_filenames(resource, data);
     
     return file_data;
 }
 
 
-write_sj_asset_font :: (asset: *Asset_Font) -> SJ_Asset_Single_File_Data {
+write_sj_asset_font :: (resource: *Resource_Font) -> SJ_Asset_Single_File_Data {
     
     file_data      := SJ_Asset_Single_File_Data.{};
-    file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Font_Atlas_Info);
-    file_data.size += cast(u32)asset.atlas.width * cast(u32)asset.atlas.height * size_of(Pixel);
-    file_data.size += size_of(SJ_Track_Filename) * cast(u32)asset.track_filenames.count;
+    file_data.size  = size_of(SJ_Asset_Header);
+    file_data.size += size_of(SJ_Track_Filename) * cast(u32)resource.track_filenames.count;
     
-    for font: asset.fonts {
+    file_data.size += size_of(u32);
+    for font: resource.fonts {
         file_data.size += size_of(SJ_Font_Info);
         file_data.size += cast(u32)(size_of(SJ_Font_Glyph_Info) * font.glyphs.count);
     }
-    
     
     file_data.data = xx alloc(file_data.size);
     data_base     := file_data.data;
     data          := *data_base;
     
     asset_header:= consume_data(data, SJ_Asset_Header);
-    asset_header.id         = asset.id;
     asset_header.type       = .Font;
     asset_header.size_bytes = file_data.size;
-    asset_header.track_filename_count = xx asset.track_filenames.count;
+    asset_header.track_filename_count = xx resource.track_filenames.count;
     
-    atlas_info := consume_data(data, SJ_Font_Atlas_Info);
-    atlas_info.width      = asset.atlas.width;
-    atlas_info.height     = asset.atlas.height;
-    atlas_info.size_count = cast(u32)asset.fonts.count;
+    size_count := consume_data(data, u32);
+    <<size_count = xx resource.fonts.count;
     
-    
-    pixel_count: = cast(u32)atlas_info.width * cast(u32)atlas_info.height;
-    
-    for pixel_index: 0 .. pixel_count-1 {
-        dest_pixel: = consume_data(data, Pixel);
-        src_pixel: = asset.atlas.pixels + pixel_index;
-        <<dest_pixel = <<src_pixel;
-    }
-    
-    
-    for font: asset.fonts {
+    for font: resource.fonts {
         
         info := consume_data(data, SJ_Font_Info);
-        info.id           = asset.id;
         info.pixel_size   = font.pixel_size;
         info.height       = font.height;
         info.line_height  = font.line_height;
         info.ascent       = font.ascent;
         info.descent      = font.descent;
         info.line_gap     = font.line_gap;
-        info.glyph_count  = cast(u32)asset.desired_glyphs.count;
-        copy_string_to_u8_array(info.asset_id, asset.asset_ids[it_index]);
+        info.glyph_count  = cast(u32)resource.desired_glyphs.count;
+        copy_string_to_u8_array(info.asset_id, resource.ids[it_index]);
+        copy_string_to_u8_array(info.texture_id, resource.texture_id);
         
         
         for glyph_index: 0 .. info.glyph_count-1 {
-            code: = asset.desired_glyphs.data[glyph_index];
+            code: = resource.desired_glyphs.data[glyph_index];
             src_glyph := font.glyphs[code - MIN_FONT_GLYPH];
             dest_glyph := consume_data(data, SJ_Font_Glyph_Info);
             
@@ -372,60 +342,57 @@ write_sj_asset_font :: (asset: *Asset_Font) -> SJ_Asset_Single_File_Data {
         }
     }
     
-    write_asset_track_filenames(asset, data);
+    write_asset_track_filenames(resource, data);
     
     return file_data;
 }
 
 
-write_sj_asset_texture_map :: (asset: *Asset_Texture_Map) -> SJ_Asset_Single_File_Data {
+write_sj_asset_texture :: (resource: *Resource_Texture) -> SJ_Asset_Single_File_Data {
     
     
     file_data:      = SJ_Asset_Single_File_Data.{};
-    file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Texture_Map_Info);
+    file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Texture_Info);
     file_data.size += 
-        cast(u32)size_of(Pixel) * cast(u32)asset.texture.width * cast(u32)asset.texture.height;
-    file_data.size += size_of(SJ_Track_Filename) * cast(u32)asset.track_filenames.count;
-    
+        cast(u32)size_of(Pixel) * cast(u32)resource.texture.width * cast(u32)resource.texture.height;
+    file_data.size += size_of(SJ_Track_Filename) * cast(u32)resource.track_filenames.count;
     
     file_data.data = xx alloc(file_data.size);
     data_base     := file_data.data;
     data          := *data_base;
     
     asset_header:= consume_data(data, SJ_Asset_Header);
-    asset_header.id         = asset.id;
-    asset_header.type       = .Texture_Map;
+    asset_header.type       = .Texture;
     asset_header.size_bytes = file_data.size;
-    asset_header.track_filename_count = xx asset.track_filenames.count;
+    asset_header.track_filename_count = xx resource.track_filenames.count;
     
-    texture_info := consume_data(data, SJ_Texture_Map_Info);
-    texture_info.id     = asset.id;
-    texture_info.width  = asset.texture.width;
-    texture_info.height = asset.texture.height;
-    copy_string_to_u8_array(texture_info.asset_id, asset.asset_id);
+    texture_info := consume_data(data, SJ_Texture_Info);
+    texture_info.width  = resource.texture.width;
+    texture_info.height = resource.texture.height;
+    copy_string_to_u8_array(texture_info.asset_id, resource.id);
     
     
     pixel_count: = cast(u32)texture_info.width * cast(u32)texture_info.height;
     
     for pixel_index: 0 .. pixel_count-1 {
         dest_pixel: = consume_data(data, Pixel);
-        src_pixel: = asset.texture.pixels + pixel_index;
+        src_pixel: = resource.texture.pixels + pixel_index;
         <<dest_pixel = <<src_pixel;
     }
     
-    write_asset_track_filenames(asset, data);
+    write_asset_track_filenames(resource, data);
     
     return file_data;
 }
 
 
-write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
+write_sj_asset_model :: (resource: *Resource_Model) -> SJ_Asset_Single_File_Data {
     
     file_data      := SJ_Asset_Single_File_Data.{};
     file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Model_Info);
-    file_data.size += size_of(SJ_Track_Filename) * cast(u32)asset.track_filenames.count;
+    file_data.size += size_of(SJ_Track_Filename) * cast(u32)resource.track_filenames.count;
     
-    model := asset.model;
+    model := resource.model;
     for mesh: model.meshes {
         file_data.size += size_of(SJ_Mesh_Info);
         file_data.size += cast(u32)mesh.triangles.count * (size_of(SJ_Mesh_Vertex) * 3);
@@ -465,23 +432,22 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
     
     
     asset_header:= consume_data(data, SJ_Asset_Header);
-    asset_header.id                   = asset.id;
     asset_header.type                 = .Model;
     asset_header.size_bytes           = file_data.size;
-    asset_header.track_filename_count = xx asset.track_filenames.count;
+    asset_header.track_filename_count = xx resource.track_filenames.count;
     
     model_info := consume_data(data, SJ_Model_Info);
-    model_info.mesh_count = xx asset.model.meshes.count;
-    copy_string_to_u8_array(model_info.asset_id, asset.model.name);
+    model_info.mesh_count = xx resource.model.meshes.count;
+    copy_string_to_u8_array(model_info.asset_id, resource.model.name);
     
-    model_info.skeleton_count    = xx asset.model.skeletons.count;
-    model_info.bone_count        = asset.model.bone_count;
-    model_info.animation_count   = xx asset.model.animations.count;
+    model_info.skeleton_count    = xx resource.model.skeletons.count;
+    model_info.bone_count        = resource.model.bone_count;
+    model_info.animation_count   = xx resource.model.animations.count;
     model_info.asset_translation = V3.{};
     model_info.asset_rotation    = V3.{};
     model_info.asset_scale       = V3.{x=1,y=1,z=1};
     
-    for asset.asset_details.details {
+    for resource.asset_details.details {
         if it.type == .Translation {
             model_info.asset_translation = V3.{x=it.x,y=it.y,z=it.z};
             
@@ -495,12 +461,11 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
     }
     
     
-    for mesh: asset.model.meshes {
+    for mesh: resource.model.meshes {
         
         info:= consume_data(data, SJ_Mesh_Info);
-        info.id = asset.id;
-        info.mesh_to_world = mesh.mesh_to_world;
-        info.world_to_mesh = mesh.world_to_mesh;
+        info.mesh_to_world  = mesh.mesh_to_world;
+        info.world_to_mesh  = mesh.world_to_mesh;
         copy_string_to_u8_array(info.asset_id, mesh.name);
         
         info.triangle_count = cast(u32)mesh.triangles.count;
@@ -554,15 +519,12 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
             v3.color = 0xFFFFFFFF;
         }
         
-        
-        
-        
-        if mesh.materials.count == 0 continue;
-        
-        material := mesh.materials[0];
-        
-        for 0 .. Mesh_Texture_Type.Count - 1 {
-            copy_string_to_u8_array(info.texture_map_ids[it], material.texture_map_ids[it]);
+        info.material_count = 0;
+        for mesh.materials {
+            copy_string_to_u8_array(info.material_ids[it_index], it.name);
+            
+            info.material_count += 1;
+            if info.material_count == 4 break;
         }
         
     }
@@ -584,13 +546,13 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
         }
     }
     
-    for root_bone: asset.model.skeletons {
+    for root_bone: resource.model.skeletons {
         write_bone_info(data, root_bone);
     }
     
     
     
-    for animation: asset.model.animations {
+    for animation: resource.model.animations {
         anim_info := consume_data(data, SJ_Animation_Info);
         // TODO maybe an animation can have a name somehow.
         copy_string_to_u8_array(anim_info.name, animation.name);
@@ -614,7 +576,7 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
         }
     }
     
-    graph := asset.model.animation_graph;
+    graph := resource.model.animation_graph;
     anim_graph_info := consume_data(data, SJ_Animation_Graph_Info);
     anim_graph_info.state_count   = xx graph.states.count;
     anim_graph_info.initial_state = xx graph.initial_state;
@@ -628,9 +590,52 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
         state_info.stop_time       = state.stop_time;
     }
     
-    write_asset_track_filenames(asset, data);
+    write_asset_track_filenames(resource, data);
     
     return file_data;
+}
+
+
+
+write_sj_asset_material :: (resource: *Resource_Material) -> SJ_Asset_Single_File_Data {
+    
+    file_data:      = SJ_Asset_Single_File_Data.{};
+    file_data.size  = size_of(SJ_Asset_Header) + size_of(SJ_Material_Info);
+    file_data.size += size_of(SJ_Track_Filename) * cast(u32)resource.track_filenames.count;
+    
+    
+    file_data.data = xx alloc(file_data.size);
+    data_base     := file_data.data;
+    data          := *data_base;
+    
+    asset_header:= consume_data(data, SJ_Asset_Header);
+    asset_header.type       = .Material;
+    asset_header.size_bytes = file_data.size;
+    asset_header.track_filename_count = xx resource.track_filenames.count;
+    
+    material := resource.material;
+    
+    material_info := consume_data(data, SJ_Material_Info);
+    copy_string_to_u8_array(material_info.asset_id, material.name);
+    
+    material_info.ambient_color  = material.ambient_color;
+    material_info.diffuse_color  = material.diffuse_color;
+    material_info.specular_color = material.specular_color;
+    material_info.shininess      = material.shininess;
+    material_info.alpha          = material.alpha;
+    material_info.illum          = material.illum;
+    
+    for 0 .. Mesh_Texture_Type.Count - 1 {
+        texture_map_id := material.texture_map_ids[it];
+        if texture_map_id.count > 0 {
+            copy_string_to_u8_array(material_info.texture_map_ids[it], texture_map_id);
+        }
+    }
+    
+    write_asset_track_filenames(resource, data);
+    
+    return file_data;
+    
 }
 
 
@@ -638,8 +643,7 @@ write_sj_asset_model :: (asset: *Asset_Model) -> SJ_Asset_Single_File_Data {
 
 
 
-
-save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: bool, single_files_descriptor: bool) {
+save_final_assets :: (resources: *Resources, bundle: bool, single_files: bool, single_files_descriptor: bool) {
     
     print("preparing save\n");
     
@@ -649,18 +653,19 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
     resources_directory := "../resources";
     
     
-    size_of_models:         u32;
-    size_of_texture_maps:   u32;
-    size_of_sprite_atlases: u32;
-    size_of_sounds:         u32;
-    size_of_fonts:          u32;
+    size_of_models:    u32;
+    size_of_textures:  u32;
+    size_of_materials: u32;
+    size_of_sprites:   u32;
+    size_of_sounds:    u32;
+    size_of_fonts:     u32;
     
     
     single_file_infos :[..]SJ_Asset_Single_File_Info;
     add_single_file_info :: (infos: *[..]SJ_Asset_Single_File_Info, 
                              asset_id: string,
                              filename: string, 
-                             type: SJ_Asset_Type,
+                             type: Asset_Type,
                              track_filename_count: u32) {
         info := SJ_Asset_Single_File_Info.{};
         info.type = type;
@@ -670,37 +675,56 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
         array_add(infos, info);
     }
     
-    for *asset_sprite_atlas: assets.sprite_atlases {
-        if it_index == assets.sprite_atlas_count break;
+    
+    // NOTE: Process resource types in dependency order.
+    
+    for * resources.textures {
         
-        sprite_file_data := write_sj_asset_sprite_atlas(asset_sprite_atlas);
-        array_add(*file_datas.sprite_datas, sprite_file_data);
+        texture_file_data := write_sj_asset_texture(it);
+        array_add(*file_datas.texture_datas, texture_file_data);
         
         if single_files {
-            filename := sprint("%/%.%", resources_directory, xx it_index, "sj5k_sprite_atlas");
+            filename := sprint("%/%.%", resources_directory, it.id, "sj5k_texture");
             delete_file(filename);
-            written := write_file(filename, sprite_file_data.data, sprite_file_data.size);
+            written := write_file(filename, texture_file_data.data, texture_file_data.size);
             
-            add_single_file_info(*single_file_infos, asset_sprite_atlas.asset_id, filename, .Sprite_Atlas, xx asset_sprite_atlas.track_filenames.count);
+            add_single_file_info(*single_file_infos, it.id, filename, .Texture, xx it.track_filenames.count);
         }
         
-        size_of_sprite_atlases += sprite_file_data.size;
+        size_of_textures += texture_file_data.size;
     }
     
     
-    for *asset_sound: assets.sounds {
-        if it_index == assets.sound_count break;
-        if asset_sound.file_type == .Unknown continue;
+    
+    for * resources.sprites {
         
-        sound_file_data := write_sj_asset_sound(asset_sound);
+        sprite_file_data := write_sj_asset_sprite(it);
+        array_add(*file_datas.sprite_datas, sprite_file_data);
+        
+        if single_files {
+            filename := sprint("%/%.%", resources_directory, it.id, "sj5k_sprite");
+            delete_file(filename);
+            written := write_file(filename, sprite_file_data.data, sprite_file_data.size);
+            
+            add_single_file_info(*single_file_infos, it.id, filename, .Sprite, xx it.track_filenames.count);
+        }
+        
+        size_of_sprites += sprite_file_data.size;
+    }
+    
+    
+    for * resources.sounds {
+        if it.file_type == .Unknown continue;
+        
+        sound_file_data := write_sj_asset_sound(it);
         array_add(*file_datas.sound_datas, sound_file_data);
         
         if single_files {
-            filename := sprint("%/%.%", resources_directory, asset_sound.asset_id, "sj5k_sound");
+            filename := sprint("%/%.%", resources_directory, it.id, "sj5k_sound");
             delete_file(filename);
             written := write_file(filename, sound_file_data.data, sound_file_data.size);
             
-            add_single_file_info(*single_file_infos, asset_sound.asset_id, filename, .Sound, xx asset_sound.track_filenames.count);
+            add_single_file_info(*single_file_infos, it.id, filename, .Sound, xx it.track_filenames.count);
         }
         
         size_of_sounds += sound_file_data.size;
@@ -708,54 +732,50 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
     
     
     
-    for *asset_font: assets.fonts {
-        if it_index == assets.font_count break;
+    for * resources.fonts {
         
-        font_file_data := write_sj_asset_font(asset_font);
+        font_file_data := write_sj_asset_font(it);
         array_add(*file_datas.font_datas, font_file_data);
         
         if single_files {
-            filename := sprint("%/%.%", resources_directory, asset_font.asset_id, "sj5k_font");
+            filename := sprint("%/%.%", resources_directory, it.id, "sj5k_font");
             delete_file(filename);
             written := write_file(filename, font_file_data.data, font_file_data.size);
             
-            add_single_file_info(*single_file_infos, asset_font.asset_id, filename, .Font, xx asset_font.track_filenames.count);
+            add_single_file_info(*single_file_infos, it.id, filename, .Font, xx it.track_filenames.count);
         }
         
         size_of_fonts += font_file_data.size;
     }
     
     
-    
-    for *asset_texture_map : assets.texture_maps {
-        if it_index == assets.texture_map_count break;
+    for * resources.materials {
         
-        texture_map_file_data := write_sj_asset_texture_map(asset_texture_map);
-        array_add(*file_datas.texture_map_datas, texture_map_file_data);
+        material_file_data := write_sj_asset_material(it);
+        array_add(*file_datas.material_datas, material_file_data);
         
         if single_files {
-            filename := sprint("%/%.%", resources_directory, asset_texture_map.asset_id, "sj5k_texture_map");
+            filename := sprint("%/%.%", resources_directory, it.id, "sj5k_material");
             delete_file(filename);
-            written := write_file(filename, texture_map_file_data.data, texture_map_file_data.size);
+            written := write_file(filename, material_file_data.data, material_file_data.size);
             
-            add_single_file_info(*single_file_infos, asset_texture_map.asset_id, filename, .Texture_Map, xx asset_texture_map.track_filenames.count);
+            add_single_file_info(*single_file_infos, it.id, filename, .Material, xx it.track_filenames.count);
         }
         
-        size_of_texture_maps += texture_map_file_data.size;
+        size_of_materials += material_file_data.size;
     }
     
-    for *asset_model: assets.models {
-        if it_index == assets.model_count break;
+    for * resources.models {
         
-        model_file_data := write_sj_asset_model(asset_model);
+        model_file_data := write_sj_asset_model(it);
         array_add(*file_datas.model_datas, model_file_data);
         
         if single_files {
-            filename := sprint("%/%.%", resources_directory, asset_model.asset_id, "sj5k_model");
+            filename := sprint("%/%.%", resources_directory, it.id, "sj5k_model");
             delete_file(filename);
             written := write_file(filename, model_file_data.data, model_file_data.size);
             
-            add_single_file_info(*single_file_infos, asset_model.asset_id, filename, .Model, xx asset_model.track_filenames.count);
+            add_single_file_info(*single_file_infos, it.id, filename, .Model, xx it.track_filenames.count);
         }
         
         size_of_models += model_file_data.size;
@@ -763,13 +783,15 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
     
     
     
+    
     total_size:u32 = 
         size_of(SJ_Header) + 
-        size_of_sprite_atlases + 
+        size_of_sprites + 
         size_of_sounds + 
         size_of_fonts + 
         size_of_models + 
-        size_of_texture_maps;
+        size_of_textures + 
+        size_of_materials;
     
     
     
@@ -780,29 +802,39 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
         
         
         header:= consume_data(*bundle_data, SJ_Header);
-        header.code               = magic_number("sj5k");
-        header.asset_count        = 0;
-        header.sprite_atlas_count = 0;
-        header.sound_count        = 0;
-        header.font_count         = 0;
-        header.model_count        = 0;
-        header.texture_map_count  = 0;
+        header.code           = magic_number("sj5k");
+        header.asset_count    = 0;
+        header.sprite_count   = 0;
+        header.sound_count    = 0;
+        header.font_count     = 0;
+        header.model_count    = 0;
+        header.texture_count  = 0;
+        header.material_count = 0;
         
         
+        // NOTE: Write data in depedency order.
         
+        // Many things depend on textures.
+        for data: file_datas.texture_datas {
+            if data.size == 0 continue;
+            texture_data := consume_data_size(*bundle_data, data.size);
+            copy_data(texture_data, data.data, data.size);
+            
+            header.texture_count += 1;
+            header.asset_count   += 1;
+            
+        }
         
         for data: file_datas.sprite_datas {
-            if it_index == assets.sprite_atlas_count break;
             if data.size == 0 continue; // WIERD.
             atlas_data := consume_data_size(*bundle_data, data.size);
             copy_data(atlas_data, data.data, data.size);
             
-            header.sprite_atlas_count += 1;
+            header.sprite_count += 1;
             header.asset_count += 1;
         }
         
         for data: file_datas.sound_datas {
-            if it_index == assets.sound_count break;
             if data.size == 0 continue; // WIERD.
             sound_data := consume_data_size(*bundle_data, data.size);
             copy_data(sound_data, data.data, data.size);
@@ -812,7 +844,6 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
         }
         
         for data: file_datas.font_datas {
-            if it_index == assets.font_count break;
             if data.size == 0 continue; // WIERD.
             font_data := consume_data_size(*bundle_data, data.size);
             copy_data(font_data, data.data, data.size);
@@ -821,19 +852,18 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
             header.asset_count += 1;
         }
         
-        for data: file_datas.texture_map_datas {
-            if it_index == assets.texture_map_count break;
+        // Models (meshes) depend on materials
+        for data: file_datas.material_datas {
             if data.size == 0 continue;
-            texture_map_data := consume_data_size(*bundle_data, data.size);
-            copy_data(texture_map_data, data.data, data.size);
+            material_data := consume_data_size(*bundle_data, data.size);
+            copy_data(material_data, data.data, data.size);
             
-            header.texture_map_count += 1;
-            header.asset_count       += 1;
+            header.material_count += 1;
+            header.asset_count    += 1;
             
         }
         
         for data: file_datas.model_datas {
-            if it_index == assets.model_count break;
             if data.size == 0 continue;
             model_data := consume_data_size(*bundle_data, data.size);
             copy_data(model_data, data.data, data.size);
@@ -843,7 +873,7 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
             
         }
         
-        asset_bundle_filename := "../resources/asset_bundle_0_0_6.sj5k";
+        asset_bundle_filename := "../resources/asset_bundle_0_2_0.sj5k";
         delete_file(asset_bundle_filename);
         written := write_file(asset_bundle_filename, cast(*void)bundle_data_start, total_size);
         
@@ -871,7 +901,7 @@ save_final_asset_files :: (assets: *Asset_Files, bundle: bool, single_files: boo
         }
         
         
-        filename := "../resources/asset_single_file_infos_0_0_1.sj5k";
+        filename := "../resources/asset_single_file_infos_0_0_2.sj5k";
         delete_file(filename);
         written := write_file(filename, cast(*void)data_start, size);
         

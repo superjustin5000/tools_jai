@@ -226,6 +226,9 @@ mtl_parse_line :: (_line: string, mat: *Mesh_Material) {
     
     found, left, right: = split_from_left(line, " ");
     if found {
+        
+        right = trim(right);
+        
         if equal(left, "newmtl") {
             mat.name = right;
         } else if equal(left, "Ka") {

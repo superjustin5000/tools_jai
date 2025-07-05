@@ -22,8 +22,6 @@ Glyph :: struct {
 }
 
 Font :: struct {
-    id: u32;
-    atlas: Texture;
     pixel_size: u16;
     height: f32;
     line_height: f32;

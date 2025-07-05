@@ -2020,7 +2020,7 @@ parse_geometry_materials :: (geometry: *FBX_Geometry, node: *FBX_Node) -> bool {
         values_prop := indices_node.properties[0];
         if values_prop.length > 0 {
             for material_index : 0 .. values_prop.length - 1 {
-                array_add(*geometry.material_indices, values_prop.array_s32[material_index]);
+                array_add_if_unique(*geometry.material_indices, values_prop.array_s32[material_index]);
             }
         }
         
@@ -2044,6 +2044,10 @@ parse_geometry_materials :: (geometry: *FBX_Geometry, node: *FBX_Node) -> bool {
 
 
 parse_material :: (node: *FBX_Node, material: *FBX_Material) {
+    
+    name_prop := node.properties[1];
+    found, name_string, remaining := split_from_left(name_prop.value, 0);
+    material.name = copy_string(name_string);
     
     property_id     := "P";
     property_offset : u32 = 4;
@@ -2148,7 +2152,6 @@ parse_texture :: (node: *FBX_Node, tex: *FBX_Texture) {
 
 parse_layered_texture :: (node: *FBX_Node, tex: *FBX_Layered_Texture) {
     
-    a := 0;
     
 }
 
@@ -3254,6 +3257,7 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
             
             fbx_mat := fbx_mesh.materials[material_index];
             
+            material.name           = copy_string(fbx_mat.name);
             material.ambient_color  = fbx_mat.ambient_color;
             material.diffuse_color  = fbx_mat.diffuse_color;
             material.specular_color = fbx_mat.specular_color;
@@ -3274,6 +3278,7 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                 }
             }
             
+            array_add(*mesh.material_names, material.name);
             array_add(*mesh.materials, material);
         }
         
