@@ -46,7 +46,8 @@ Token_Type :: enum {
     Return;
     
     Identifier;
-    Number;
+    Integer;
+    Floating_Point;
     Directive;
     
     Equal;
@@ -173,14 +174,17 @@ eat_comments :: (tok: *Tokenizer) {
 }
 
 
-parse_number :: (tok: *Tokenizer, sb: *String_Builder) {
+parse_number :: (tok: *Tokenizer, sb: *String_Builder) -> Token_Type {
+    type : Token_Type = .Integer;
     while is_numeric(tok.at) {
         if peek(tok, 1) == #char "." {
             append_and_advance(tok, sb);
+            type = .Floating_Point;
         }
         append_and_advance(tok, sb);
     }
     if tok.at == #char "f" append_and_advance(tok, sb);
+    return type;
 }
 
 parse_identifier :: (tok: *Tokenizer, sb: *String_Builder) {
@@ -298,8 +302,7 @@ add_next_token :: (tok: *Tokenizer) {
                 eat_blanks(tok);
             }
             else if is_numeric(tok.at) {
-                token.type = .Number;
-                parse_number(tok, *sb);
+                token.type = parse_number(tok, *sb);
             }
             else {
                 token.type = .Unknown;

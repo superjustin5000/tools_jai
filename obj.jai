@@ -1,5 +1,4 @@
 
-#scope_file
 
 #import "Basic";
 #import "String";
@@ -11,7 +10,6 @@
 
 
 
-#scope_export
 
 
 
@@ -151,6 +149,8 @@ parse_line :: (_line: string, mesh: *Mesh) {
         triangle.v3.uv_index     = t;
         triangle.v3.normal_index = n;
         
+        mesh_triangle_fix_winding_order(mesh, *triangle);
+        
         array_add(*mesh.triangles, triangle);
         
     } else {
@@ -255,6 +255,11 @@ mtl_parse_line :: (_line: string, mat: *Mesh_Material) {
             mat.texture_map_files[Mesh_Texture_Type.Opacity] = right;
         } else if equal(left, "map_bump") || equal(left, "bump") {
             mat.texture_map_files[Mesh_Texture_Type.Normal] = right;
+            
+        } else if equal(left, "Ni") {
+            
+        } else if equal(left, "Tf") {
+            
         }
     }
     
@@ -267,7 +272,10 @@ mtl_parse_line :: (_line: string, mat: *Mesh_Material) {
 
 
 
-
+// TODO: Should return multiple materials.
+// With the name being filename_matname.
+// Then the obj can save material names the same way,
+// and that's how they'll be linked up.
 mtl_load :: (data: *u8, data_size: u64) -> Mesh_Material {
     
     mat: Mesh_Material = .{};

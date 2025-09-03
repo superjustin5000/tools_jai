@@ -3252,6 +3252,8 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
         
         add_material_to_mesh :: (fbx_mesh: *FBX_Mesh, material_index: s32, mesh: *Mesh) {
             
+            if (fbx_mesh.materials.count == 0) return;
+            
             material:  = cast(*Mesh_Material)alloc(size_of(Mesh_Material));
             <<material = .{};
             

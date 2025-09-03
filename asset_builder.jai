@@ -642,7 +642,7 @@ main :: () {
                     next_texture_id = tprint("sprite_atlas_%", current_sprite_atlas);
                 }
                 atlas_update_for_texure(*atlas_builder, section, sprite.texture);
-                uv := atlas_add_texture(*atlas_builder, section, sprite.texture);
+                sprite.uv = atlas_add_texture(*atlas_builder, section, sprite.texture);
                 sprite.texture_id = next_texture_id;
             }
             

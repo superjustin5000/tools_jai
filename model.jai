@@ -137,7 +137,6 @@ mesh_triangle_fix_winding_order :: (mesh: *Mesh, triangle: *Mesh_Triangle) {
     
     normal := cross(edge1, edge2);
     normal = normalize(normal);
-    
     // This will ensure that the winding order will produce the normal expected.
     n1 := mesh.normals[triangle.v1.normal_index];
     if dot(n1, normal) < 0 {

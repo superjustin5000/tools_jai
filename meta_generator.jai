@@ -19,28 +19,13 @@ struct Meta_Condition {
     char *prop_name;
     u32 value;
 };
-struct Meta_Prop_V0 {
-    char serialized_type_name[64];
-    char name[32];
-    u64 offset;
-    bool pointer;
-    bool array;
-    bool readonly;
-    bool hidden;
-    bool unioned_prop;
-    u32 size;
-    Meta_Condition condition;
-    char array_count[32];
-    char old_name[32];
-    s32 int_val;
-    s32 id;
-};
 
 struct Meta_Type;
 
 struct Meta_Prop {
     Meta_Type *type;
     char serialized_type_name[64];
+u32  type_version;
     char name[32];
     char old_name[32];
     u64 offset;
@@ -84,6 +69,7 @@ struct Meta_Type {
     Meta_Prop *props;
     Meta_Enum_Val *enum_vals;
     u32 prop_count;
+u32 version;
 };
 
 
@@ -159,6 +145,7 @@ Struct :: struct {
     prop_count: u32;
     token_index: s64;
     is_union: bool;
+    version: string;
 };
 
 Typedef :: struct {
@@ -176,6 +163,7 @@ Enum :: struct {
     token_index: s64;
     value_count: u32;
     is_flags: bool;
+    version: string;
 }
 
 Condition :: struct {
@@ -195,6 +183,41 @@ Process :: struct {
 
 
 
+Meta_Prop_Flags :: enum_flags u32 {
+    Unioned;
+    Array; 
+    Pointer;
+    Readonly;
+    Hidden;  
+    Text_Lg;
+    Inline_Props;
+    Serialize_Pointer_Value;
+    Flag_9;
+    Flag_10;
+    Flag_11;
+    Flag_12;
+    Flag_13;
+    Flag_14;
+    Flag_15;
+    Flag_16;
+    Flag_17;
+    Flag_18;
+    Flag_19;
+    Flag_20;
+    Flag_21;
+    Flag_22;
+    Flag_23;
+    Flag_24;
+    Flag_25;
+    Flag_26;
+    Flag_27;
+    Flag_28;
+    Flag_29;
+    Flag_30;
+    Flag_31;
+    No_Serialize;
+};
+
 
 process_tokens :: (proc : *Process, tokenizer: *Tokenizer) {
     
@@ -207,7 +230,9 @@ process_tokens :: (proc : *Process, tokenizer: *Tokenizer) {
         generate_meta_struct(proc, tokenizer, *meta_struct, it_index, *meta_builder, meta_struct.is_union);
     }
     for meta_typedef : proc.typedefs {
-        generate_meta_typedef(proc, *meta_typedef, *meta_builder);
+        if (meta_typedef.struct_index >= 0) {
+            generate_meta_typedef(proc, *meta_typedef, *meta_builder);
+        }
     }
     for meta_enum : proc.enums {
         generate_meta_enum(proc, tokenizer, *meta_enum, *meta_builder);
@@ -233,10 +258,16 @@ gather_types_to_generate :: (proc: *Process, tokenizer: *Tokenizer) {
         token := tokenizer.tokens[it];
         
         if token.name == "generate_meta" {
+            version_string := "0";
             it += 1; // (
             it += 1; // the serialized name string
             serialized_name := tokenizer.tokens[it].name;
-            it += 1; // )
+            it += 1; // ) or ,
+            if (tokenizer.tokens[it].type == .Comma) {
+                it += 1; // version number
+                version_string = tokenizer.tokens[it].name;
+                it += 1; // )
+            }
             it += 1; // ;
             it += 1; // struct/union/typedef
             token = tokenizer.tokens[it];
@@ -250,6 +281,7 @@ gather_types_to_generate :: (proc: *Process, tokenizer: *Tokenizer) {
                     meta_struct.name            = tokenizer.tokens[it].name;
                     meta_struct.token_index     = it;
                     meta_struct.is_union        = token.name == "union";
+                    meta_struct.version         = version_string;
                     array_add(*proc.structs, meta_struct);
                     it += 1;
                 }
@@ -269,7 +301,10 @@ gather_types_to_generate :: (proc: *Process, tokenizer: *Tokenizer) {
                             break;
                         }
                     }
-                    assert(meta_typedef.struct_index >= 0, "Maybe files included in wrong order");
+                    if (meta_typedef.struct_index == -1) {
+                        // TODO: assuming that the struct was previously never defined
+                        // so this is a typedef for a primitive.
+                    }
                     
                     array_add(*proc.typedefs, meta_typedef);
                     it += 2;
@@ -280,6 +315,7 @@ gather_types_to_generate :: (proc: *Process, tokenizer: *Tokenizer) {
                     meta_enum.serialized_name = serialized_name;
                     meta_enum.name            = tokenizer.tokens[it].name;
                     meta_enum.token_index     = it;
+                    meta_enum.version         = version_string;
                     token = tokenizer.tokens[it + 1];
                     if (token.name == "meta_flags") {
                         meta_enum.is_flags = true;
@@ -293,6 +329,11 @@ gather_types_to_generate :: (proc: *Process, tokenizer: *Tokenizer) {
         
     }
 }
+
+
+
+
+
 
 
 generate_meta_typedef :: (proc : *Process, meta_typedef: *Typedef, meta_builder: *String_Builder) {
@@ -336,6 +377,15 @@ generate_meta_enum :: (proc : *Process, tokenizer: *Tokenizer, meta_enum: *Enum,
 
 
 
+get_meta_struct :: (proc: *Process, name: string) -> *Struct {
+    for * meta_struct : proc.structs {
+        if meta_struct.name == name {
+            return meta_struct;
+        }
+    }
+    return null;
+}
+
 
 generate_meta_struct :: (proc : *Process, tokenizer: *Tokenizer, meta_struct: *Struct, struct_index: s64, meta_builder: *String_Builder, is_union: bool) {
     
@@ -354,6 +404,10 @@ generate_meta_struct :: (proc : *Process, tokenizer: *Tokenizer, meta_struct: *S
     
     append(meta_builder, "};\n");
 }
+
+
+
+
 
 
 generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token_index: s64, struct_name: string, struct_index: s64, meta_builder: *String_Builder, union_count: u32) -> s64, u32 {
@@ -413,18 +467,22 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
         index += 1;
         token = tokenizer.tokens[index];
         
+        prop_struct := get_meta_struct(proc, serialized_name);
+        struct_version: string = "0";
+        if prop_struct != null {
+            struct_version = prop_struct.version;
+            
+        }
+        
         
         Meta_Prop :: struct {
             name:             string;
-            pointer:          = false;
-            array:            = false;
-            hidden:           = false;
-            readonly:         = false;
             array_count:      string;
             array_count_plus: string;
             old_name:         string;
             int_val:          string;
             id:               string;
+            flags:            Meta_Prop_Flags;
         }
         
         Meta_Prop_List :: struct {
@@ -439,7 +497,7 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
             token := tokenizer.tokens[index];
             
             if token.type == .Asterisk {
-                prop.pointer = true;
+                prop.flags |= .Pointer;
                 
                 index += 1;
                 token = tokenizer.tokens[index];
@@ -454,7 +512,7 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
             // this is an array type.
             if token.type == .Bracket_Open {
                 
-                prop.array = true;
+                prop.flags |= .Array;
                 
                 // Try to blow past any number of open and close brackets
                 // to accomodate N dimensional arrays.
@@ -524,15 +582,39 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
         
         while token.type != .Semicolon {
             
-            if token.name == "meta_hide" {
+            if token.name == "meta_no_serialize" {
                 for *prop : prop_list.props {
-                    prop.hidden = true;
+                    prop.flags |= .No_Serialize;
+                }
+            }
+            
+            else if token.name == "meta_hide" {
+                for *prop : prop_list.props {
+                    prop.flags |= .Hidden;
                 }
             }
             
             else if token.name == "meta_readonly" {
                 for *prop : prop_list.props {
-                    prop.readonly = true;
+                    prop.flags |= .Readonly;
+                }
+            }
+            
+            else if token.name == "meta_text_lg" {
+                for *prop : prop_list.props {
+                    prop.flags |= .Text_Lg;
+                }
+            }
+            
+            else if token.name == "meta_inline_props" {
+                for *prop : prop_list.props {
+                    prop.flags |= .Inline_Props;
+                }
+            }
+            
+            else if token.name == "meta_serialize_pointer_value" {
+                for *prop : prop_list.props {
+                    prop.flags |= .Serialize_Pointer_Value;
                 }
             }
             
@@ -542,7 +624,7 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                 
                 index += 2; // (, condition name or numeric value
                 token = tokenizer.tokens[index];
-                if token.type == .Number {
+                if token.type == .Integer {
                     // specifying a special value for selctively show
                     condition.name = "___selector___";
                     condition.value = token.name;
@@ -551,7 +633,13 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                     condition.name = token.name;
                     index += 2; // =, value
                     token = tokenizer.tokens[index];
-                    condition.value = token.name;
+                    if token.name == "true" {
+                        condition.value = "1";
+                    } else if token.name == "false" {
+                        condition.value = "0";
+                    } else {
+                        condition.value = token.name;
+                    }
                 }
                 
                 while token.type != .Paren_Close {
@@ -571,7 +659,7 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                 if token.type == .Plus {
                     index += 1;
                     token = tokenizer.tokens[index];
-                    if token.type == .Number {
+                    if token.type == .Integer {
                         for *prop : prop_list.props {
                             prop.array_count_plus = token.name;
                         }
@@ -606,6 +694,10 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                     for *prop : prop_list.props {
                         prop.int_val = token.name;
                     }
+                } else if token.type == .Integer {
+                    for *prop : prop_list.props {
+                        prop.int_val = token.name;
+                    }
                 }
                 while token.type != .Paren_Close {
                     index += 1;
@@ -634,8 +726,9 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
         }
         
         
-        for prop : prop_list.props {
-            unioned_prop :=  union_count == 2;
+        for *prop : prop_list.props {
+            if union_count == 2 prop.flags |= .Unioned;
+            
             
             condition_string := "{0, 0}";
             if condition.valid {
@@ -644,6 +737,10 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
             array_count_string := "{0}";
             if prop.array_count.count > 0 {
                 array_count_string = sprint("\"%\"", prop.array_count);
+            }
+            array_count_plus_string := "0";
+            if (prop.array_count_plus.count > 0) {
+                array_count_plus_string = prop.array_count_plus;
             }
             old_name_string := "{0}";
             if prop.old_name.count > 0 {
@@ -658,26 +755,25 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                 id_string = sprint("%", prop.id);
             }
             
-            append(meta_builder, sprint("{0, \"%\", \"%\", %, (u64)&(((%*)0)->%), %, %, %, 0, %, %, %, %, %, %, %},\n", 
+            append(meta_builder, sprint("{0, \"%\", %, \"%\", %, (u64)&(((%*)0)->%), 0, %, %, %, %, %, (Meta_Prop_Flags)%},\n", 
                                         
                                         serialized_name, 
+                                        struct_version,
                                         prop.name, 
                                         old_name_string,
-                                        struct_name,
-                                        prop.name,
                                         
-                                        unioned_prop, 
-                                        prop.pointer, 
-                                        prop.array, 
+                                        struct_name, // offset type
+                                        prop.name,   // offset prop
+                                        
                                         array_count_string,
                                         
                                         id_string, 
                                         int_val_string,
                                         
-                                        prop.readonly, 
-                                        prop.hidden, 
                                         condition_string,
-                                        prop.array_count_plus
+                                        array_count_plus_string,
+                                        cast(u32)prop.flags
+                                        
                                         ));
             
             if union_count == 1 union_count = 2;
@@ -704,34 +800,55 @@ generate_meta_type_array :: (proc: *Process, meta_builder: *String_Builder) {
     
     append(meta_builder, "Meta_Type meta_types[] = {\n");
     
+    
     type_names := string.["u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64", "bool", "char"];
     for name : type_names {
         append(meta_builder, sprint("{\"%\", \"%\", Meta_Type_Primitive, sizeof(%), 0, 0, 0},\n",
                                     name, name, name));
     }
     
+    
     for meta_struct : proc.structs {
-        append(meta_builder, sprint("{\"%\", \"%\", Meta_Type_Struct, sizeof(%), &meta_props__%[0], 0, %},\n", meta_struct.serialized_name, meta_struct.name, meta_struct.name, meta_struct.serialized_name, meta_struct.prop_count));
+        append(meta_builder, sprint("{\"%\", \"%\", Meta_Type_Struct, sizeof(%), &meta_props__%[0], 0, %, %},\n", meta_struct.serialized_name, meta_struct.name, meta_struct.name, meta_struct.serialized_name, meta_struct.prop_count, meta_struct.version));
     }
     
     
     for meta_typedef : proc.typedefs {
-        meta_struct := proc.structs[meta_typedef.struct_index];
-        append(meta_builder, sprint("{\"%\", \"%\", Meta_Type_Struct, sizeof(%), &meta_props__%[0], 0, %},\n", meta_typedef.serialized_name, meta_struct.name, meta_struct.name, meta_struct.serialized_name, meta_struct.prop_count));
+        if (meta_typedef.struct_index >= 0) {
+            meta_struct := proc.structs[meta_typedef.struct_index];
+            append(meta_builder, sprint("{\"%\", \"%\", Meta_Type_Struct, sizeof(%), &meta_props__%[0], 0, %, %},\n", meta_typedef.serialized_name, meta_struct.name, meta_struct.name, meta_struct.serialized_name, meta_struct.prop_count, meta_struct.version));
+        } else {
+            append(meta_builder,
+                   sprint("{\"%\", \"%\", Meta_Type_Primitive, sizeof(%), 0, 0, 0, 0},\n", meta_typedef.serialized_name, meta_typedef.existing_name, meta_typedef.existing_name));
+            
+        }
     }
     
     for meta_enum : proc.enums {
         type_string := "Meta_Type_Enum";
         if meta_enum.is_flags type_string = "Meta_Type_Enum_Flags";
-        append(meta_builder, sprint("{\"%\", \"%\", %, 4, 0, &meta_enum_vals__%[0], %},\n", meta_enum.serialized_name, meta_enum.name, type_string, meta_enum.name, meta_enum.value_count));
+        append(meta_builder, sprint("{\"%\", \"%\", %, 4, 0, &meta_enum_vals__%[0], %, %},\n", meta_enum.serialized_name, meta_enum.name, type_string, meta_enum.name, meta_enum.value_count, meta_enum.version));
     }
     
     append(meta_builder, "};\n");
     
-    append(meta_builder, sprint("u32 global_meta_type_count = %;\n", type_names.count + proc.structs.count + proc.typedefs.count + proc.enums.count));
-    append(meta_builder, sprint("u32 global_meta_struct_count = %;\n", proc.structs.count));
-    append(meta_builder, sprint("u32 global_meta_typedef_count = %;\n", proc.typedefs.count));
-    append(meta_builder, sprint("u32 global_meta_enum_count = %;\n", proc.enums.count));
+    
+    
+    for name: type_names {
+        append(meta_builder, sprint("Meta_Type *meta_type__% = meta_types + %;\n", name, it_index));
+    }
+    
+    for meta_struct : proc.structs {
+        struct_type_index := type_names.count + it_index;
+        append(meta_builder, sprint("Meta_Type *meta_type__% = meta_types + %;\n", meta_struct.name, struct_type_index));
+    }
+    
+    
+    append(meta_builder, sprint("#define META_TYPE_COUNT %\n", type_names.count + proc.structs.count + proc.typedefs.count + proc.enums.count));
+    append(meta_builder, sprint("#define META_PRIMITIVE_COUNT %\n", type_names.count));
+    append(meta_builder, sprint("#define META_STRUCT_COUNT %\n", proc.structs.count));
+    append(meta_builder, sprint("#define META_TYPEDEF_COUNT %\n", proc.typedefs.count));
+    append(meta_builder, sprint("#define META_ENUM_COUNT %\n", proc.enums.count));
 }
 
 
@@ -741,6 +858,7 @@ generate_meta_type_array :: (proc: *Process, meta_builder: *String_Builder) {
 main :: () {
     
     filenames : [..]string;
+    array_add(*filenames, "../code/string.h");
     array_add(*filenames, "../code/assets.h");
     array_add(*filenames, "../code/editor.h");
     array_add(*filenames, "../code/entity.h");
@@ -753,6 +871,8 @@ main :: () {
     array_add(*filenames, "../code/platform.h");
     array_add(*filenames, "../code/mathh.h");
     array_add(*filenames, "../code/types.h");
+    array_add(*filenames, "../code/model.h");
+    array_add(*filenames, "../code/game_undo.h");
     
     
     proc := New(Process);
