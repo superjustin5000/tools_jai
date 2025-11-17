@@ -2,9 +2,7 @@
 #import "Basic";
 
 #import "common";
-
-
-
+#import "mathh";
 
 
 Pixel :: struct {
@@ -12,12 +10,29 @@ Pixel :: struct {
 };
 
 
+// TODO: This should be image, not texture.
 Texture :: struct {
     texture_index: u16; //index of texture loaded into graphics hardware
     width, height: u16;
     pixels: *Pixel;
 }
 
+
+Sprite :: struct {
+    atlas_texture_id: string; // The texture that is the sprite sheet.
+    uv: Rect;
+    texture: Texture;
+}
+
+sprite_valid :: inline (s: Sprite) -> bool {
+    return s.texture.pixels != null;
+}
+
+
+texture_free :: (texture: *Texture) {
+    free(texture.pixels);
+    <<texture = Texture.{};
+}
 
 volume :: inline (a: Texture) -> u32 {
     return cast(u32)a.width * cast(u32)a.height;

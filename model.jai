@@ -2,6 +2,7 @@
 #import "Basic";
 
 #import "common";
+#import "mathh";
 #import "image";
 #import "Math";
 #import "animation_graph";
@@ -49,12 +50,14 @@ Mesh :: struct {
 
 Model :: struct {
     name: string;
-    meshes:          [..]*Mesh;
-    skeletons:       [..]*Bone;
-    bone_count:      u32;
-    animations:      [..]*Animation;
-    animation_graph: Animation_Graph;
+    meshes:             [..]*Mesh;
+    skeletons:          [..]*Bone;
+    bone_count:         u32;
+    animations:         [..]*Animation;
+    animation_graph_id: string;
+    asset_details_id:   string;
 }
+
 
 
 Bone :: struct {
@@ -71,6 +74,7 @@ Bone :: struct {
 
 
 Animation :: struct {
+    model_id:    string; // the linked model since this animation must have been loaded from it's own file.
     name:        string;
     time:        f32;
     frame_times: [..]f32;

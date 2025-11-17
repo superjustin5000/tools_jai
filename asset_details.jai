@@ -5,13 +5,13 @@
 #import "Math";
 
 #import "common";
-#import "file_io_common";
-
+#import "mathh";
 
 
 
 #scope_export
 
+// NOTE(justin): @Serialized
 Asset_Detail :: struct {
     type: Asset_Detail_Type;
     x: f32;
@@ -20,18 +20,19 @@ Asset_Detail :: struct {
     m: Matrix4;
 }
 
+// NOTE(justin): @Serialzied enum values have to match those 
+// of the same enum that it's getting deserialized into. (assets.h)
+// has to be u32 due to serialization.
+Asset_Detail_Type :: enum u32 {
+    Translation :: 1;
+    Rotation    :: 2;
+    Scale       :: 3;
+    Xform       :: 10;
+}
+
 Asset_Details :: struct {
     name:     string;
     details:  [..]Asset_Detail;
-}
-
-Asset_Detail_Type :: enum {
-    Translation;
-    Rotation;
-    Scale;
-    Xform;
-    
-    Count;
 }
 
 

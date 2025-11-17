@@ -4,7 +4,7 @@
 #import "Hash_Table";
 
 #import "common";
-#import "file_io_common";
+#import "mathh";
 #import "model";
 #import "deflate";
 #import "asset_details";
@@ -965,7 +965,9 @@ parse_global_settings :: (scene: *FBX_Scene) {
         };
         
         scene.settings.basis = basis_matrix(scene.settings.basis_basis);
-        scene.settings.inverse_basis = inverse(scene.settings.basis);
+        inverse_basis_worked, inverse_basis := inverse(scene.settings.basis);
+        assert(inverse_basis_worked);
+        scene.settings.inverse_basis = inverse_basis;
         
         scene.settings.desired_basis_basis = Basis.{
             u  = .Z,
@@ -1321,8 +1323,8 @@ parse_objects :: (scene: *FBX_Scene) {
     for conn: scene.connections {
         if conn.type == .Property_Property continue;
         
-        parent_conn, success_parent := table_find(*scene.object_map, conn.to_object);
-        child_conn, success_child   := table_find(*scene.object_map, conn.from_object);
+        success_parent, parent_conn := table_find(*scene.object_map, conn.to_object);
+        success_child, child_conn  := table_find(*scene.object_map, conn.from_object);
         
         parent := parent_conn.object;
         child  := child_conn.object;
@@ -1948,14 +1950,14 @@ parse_object_transformations :: (object: *FBX_Object, node: *FBX_Node, settings:
     p:     = translation_matrix(object.position);
     ro:    = translation_matrix(object.rotation_offset);
     rp:    = translation_matrix(object.rotation_pivot);
-    _rp:   = inverse(rp);
+    _rp_worked, _rp:   = inverse(rp);
     pre:   = rotation_matrix(quaternion(object.pre_rotation));
     r:     = rotation_matrix(quaternion(object.rotation));
     post:  = rotation_matrix(quaternion(object.post_rotation));
-    _post: = inverse(post);
+    _post_worked, _post: = inverse(post);
     so:    = translation_matrix(object.scale_offset);
     sp:    = translation_matrix(object.scale_pivot);
-    _sp:   = inverse(sp);
+    _sp_worked, _sp:   = inverse(sp);
     s:     = scaling_matrix(object.scale);
     
     
@@ -1979,13 +1981,13 @@ evaluate_animation_transform :: (anim_xform: *Animation_Transform, scene: *FBX_S
     
     ro:    = translation_matrix(object.rotation_offset);
     rp:    = translation_matrix(object.rotation_pivot);
-    _rp:   = inverse(rp);
+    _rp_worked, _rp:   = inverse(rp);
     pre:   = rotation_matrix(quaternion(object.pre_rotation));
     post:  = rotation_matrix(quaternion(object.post_rotation));
-    _post: = inverse(post);
+    _post_worked, _post: = inverse(post);
     so:    = translation_matrix(object.scale_offset);
     sp:    = translation_matrix(object.scale_pivot);
-    _sp:   = inverse(sp);
+    _sp_worked, _sp:   = inverse(sp);
     
     xform: = p * ro * rp * pre * r * _post * _rp * so * sp * s * _sp;
     
@@ -3007,9 +3009,9 @@ build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
 
 
 // Some FBX files contain purely the bone and 
-// animation data for a single animation and
-// expect that the meshes and other data
-// are in a base FBX file.
+// animation data for a single animation.
+// For these files, it is expected that the 
+// meshes and other data are in a base FBX file.
 fbx_load_additional_animations :: (fbx_data: *u8, fbx_data_size: u64, animation_name: string) -> [..]*Animation {
     
     
@@ -3070,7 +3072,7 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
             mesh.mesh_to_world = mesh.mesh_to_world * mesh_parent.xform_matrix;
             mesh_parent        = mesh_parent.parent;
         }
-        model_world_to_mesh, model_world_to_mesh_worked := inverse(mesh.mesh_to_world);
+        model_world_to_mesh_worked, model_world_to_mesh:= inverse(mesh.mesh_to_world);
         assert(model_world_to_mesh_worked);
         mesh.world_to_mesh = model_world_to_mesh;
         
@@ -3353,7 +3355,7 @@ fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
                 // bone.global_to_mesh = world_to_mesh;
                 // bone.mesh_to_global = mesh_to_world;
                 bone_to_world := cluster.transform_link_matrix;
-                world_to_bone, world_to_bone_valid := inverse(bone_to_world);
+                world_to_bone_valid, world_to_bone := inverse(bone_to_world);
                 assert(world_to_bone_valid);
                 
                 bone.inverse_bind = world_to_bone * mesh.mesh_to_world;

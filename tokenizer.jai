@@ -74,7 +74,7 @@ Tokenizer :: struct {
     tokens: [..]Token;
     at_data: *u8;
     at: u8;
-    remaining: u32;
+    remaining: s64;
 }
 
 
@@ -334,7 +334,7 @@ add_next_token :: (tok: *Tokenizer) {
 
 
 
-set_data_to_tokenize::(tokenizer: *Tokenizer, data: *u8, data_size: u32) {
+set_data_to_tokenize::(tokenizer: *Tokenizer, data: *u8, data_size: s64) {
     tokenizer.at_data   = data;
     tokenizer.at        = <<tokenizer.at_data;
     tokenizer.remaining = data_size;
@@ -345,5 +345,48 @@ tokenize::(tokenizer: *Tokenizer) {
     
     while tokenizer.remaining {
         add_next_token(tokenizer);
+    }
+}
+
+
+
+Token_Reader :: struct {
+    tokenizer:   *Tokenizer;
+    token_index: s32;
+    token_at:    Token;
+    done:        bool;
+}
+
+reader_init :: (reader: *Token_Reader, tokenizer: *Tokenizer) {
+    reader.tokenizer   = tokenizer;
+    reader.token_index = -1;
+    reader.done        = false;
+    if tokenizer.tokens.count == 0 {
+        reader.done = true;
+    } else {
+        reader.token_index = 0;
+        reader.token_at    = tokenizer.tokens[0];
+    }
+}
+
+advance :: (reader: *Token_Reader) {
+    if reader.done return;
+    reader.token_index += 1;
+    reader.token_at = reader.tokenizer.tokens[reader.token_index];
+    if reader.token_index == reader.tokenizer.tokens.count - 1 {
+        reader.done = true;
+    }
+}
+
+reset :: (reader: *Token_Reader) {
+    reader_init(reader, reader.tokenizer);
+}
+
+advance_until_token_name :: (reader: *Token_Reader, token_name: string) {
+    if reader.done return;
+    
+    while reader.token_at.name != token_name {
+        advance(reader);
+        if reader.done break;
     }
 }

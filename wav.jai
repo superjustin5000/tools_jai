@@ -5,9 +5,8 @@
 #scope_file
 
 #import "Basic";
-#import "common";
 
-#import "file_io_common";
+#import "common";
 #import "sound";
 
 // - PCM FORMAT LAYOUT    - http://soundfile.sapp.org/doc/WaveFormat/

@@ -3,7 +3,6 @@
 
 #import "common";
 #import "image";
-#import "file_io_common";
 
 
 // tga format:

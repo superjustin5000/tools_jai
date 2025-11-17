@@ -2,6 +2,8 @@
 
 #import "Math";
 
+#import "common";
+
 
 DEG_TO_RAD   :: 3.14159265358979 / 180.0;
 DEG_TO_TURNS :: 0.0027777777;

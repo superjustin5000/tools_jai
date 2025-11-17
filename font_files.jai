@@ -2,6 +2,7 @@
 #import "external/stb_truetype";
 
 #import "common";
+#import "mathh";
 #import "image";
 #import "atlas";
 
@@ -13,25 +14,32 @@ GLYPH_COUNT :: (MAX_FONT_GLYPH - MIN_FONT_GLYPH) + 1; //+1 so that 32 is inclusi
 
 
 Glyph :: struct {
-    value: u8;
-    atlas_uv: Rect;
+    value:        u8;
+    atlas_uv:     Rect;
     vertex_index: u16;
-    rect: Rect;
-    advance: f32;
-    texture: Texture;
+    rect:         Rect;
+    advance:      f32;
+    texture:      Texture;
 }
 
 Font :: struct {
-    pixel_size: u16;
-    height: f32;
-    line_height: f32;
-    ascent: f32;
-    descent: f32;
-    line_gap: f32;
+    id:            string;
+    pixel_size:    u16;
+    height:        f32;
+    line_height:   f32;
+    ascent:        f32;
+    descent:       f32;
+    line_gap:      f32;
     glyph_padding: u16;
-    glyphs: [GLYPH_COUNT]Glyph;
-    kerning: [GLYPH_COUNT][GLYPH_COUNT]f32;
-    scale_factor: f32;
+    glyphs:        [GLYPH_COUNT]Glyph;
+    kerning:       [GLYPH_COUNT][GLYPH_COUNT]f32;
+    scale_factor:  f32;
+}
+
+Font_Set :: struct {
+    atlas_texture_id: string;
+    fonts:            [..]Font;
+    glyph_set:        string;
 }
 
 
@@ -127,10 +135,10 @@ font_get_glyph :: (font: *Font, font_info: *stbtt_fontinfo, code: u8, scale_fact
 
 
 
-font_load :: (font_data: *u8, font_data_size: u64, desired_glyphs: string, pixel_sizes: []u16) -> []Font {
+font_load :: (font_data: *u8, font_data_size: u64, desired_glyphs: string, pixel_sizes: []u16) -> Font_Set {
     
-    font_list: [..]Font;
-    
+    font_set := Font_Set.{};
+    font_set.glyph_set = desired_glyphs;
     
     font_info :stbtt_fontinfo; 
     offset := stbtt_GetFontOffsetForIndex(font_data, 0);
@@ -175,10 +183,10 @@ font_load :: (font_data: *u8, font_data_size: u64, desired_glyphs: string, pixel
             font.glyphs[code-MIN_FONT_GLYPH] = glyph;
         }
         
-        array_add(*font_list, font);
+        array_add(*font_set.fonts, font);
         
     }
-    return font_list;
+    return font_set;
     
 }
 

@@ -2,10 +2,8 @@
 
 #import "Basic";
 #import "String";
+
 #import "common";
-
-#import "file_io_common";
-
 
 
 
@@ -18,9 +16,8 @@ Animation_Graph :: struct {
 }
 
 Animation_State :: struct {
-    name:             string; //currently 24 chars max for the game to not bug out.
+    name:             string; // currently 24 chars max for the game to not bug out.
     animation_name:   string;
-    animation_index:  s64;
     next_state:       string;
     next_state_index: s64;
     looping:          bool;
@@ -124,6 +121,15 @@ animation_graph_load :: (file_data: *u8, file_data_size: u64, name: string) -> A
         }
     }
     
+    for *state: graph.states {
+        if state.next_state.count > 0 {
+            for *next_state : graph.states {
+                if next_state.name == state.next_state {
+                    state.next_state_index = it_index;
+                }
+            }
+        }
+    }
     
     return graph;
 }

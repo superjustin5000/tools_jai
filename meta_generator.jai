@@ -4,7 +4,6 @@
 
 
 #import "common";
-#import "file_io_common";
 #import "tokenizer";
 
 /*
@@ -361,6 +360,7 @@ generate_meta_enum :: (proc : *Process, tokenizer: *Tokenizer, meta_enum: *Enum,
         
         index += 1;
         token = tokenizer.tokens[index];
+        if token.type == .Brace_Close break;
         while token.type != .Comma {
             index += 1;
             token = tokenizer.tokens[index];
@@ -417,7 +417,12 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
     
     token := tokenizer.tokens[index];
     
+    
     while token.type != .Brace_Close {
+        
+        if token.name == "generate_meta_stop" {
+            break;
+        }
         
         if token.name == "struct" || token.name == "union" {
             index += 2; // get past open brace.
@@ -460,7 +465,19 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
             case .F64; serialized_name = "f64";
             case .Bool; serialized_name = "bool";
             case .Char; serialized_name = "char";
-            case .Identifier; serialized_name = sprint("%", token.name);
+            case .Identifier; {
+                name_builder := String_Builder.{};
+                append(*name_builder, token.name);
+                token = tokenizer.tokens[index + 1];
+                if token.type == .Paren_Open {
+                    // while ! paren close
+                    append(*name_builder, token.name);
+                    append(*name_builder, tokenizer.tokens[index+2].name);
+                    append(*name_builder, tokenizer.tokens[index+3].name);
+                    index += 3;
+                }
+                serialized_name = sprint("%", builder_to_string(*name_builder));
+            }
             case; serialized_name = "unkown_type";
         }
         
@@ -849,6 +866,11 @@ generate_meta_type_array :: (proc: *Process, meta_builder: *String_Builder) {
     append(meta_builder, sprint("#define META_STRUCT_COUNT %\n", proc.structs.count));
     append(meta_builder, sprint("#define META_TYPEDEF_COUNT %\n", proc.typedefs.count));
     append(meta_builder, sprint("#define META_ENUM_COUNT %\n", proc.enums.count));
+    
+    
+    for meta_enum: proc.enums {
+        append(meta_builder, sprint("#define %_COUNT %\n", to_upper_copy(meta_enum.name), meta_enum.value_count));
+    }
 }
 
 

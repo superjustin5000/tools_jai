@@ -7,3 +7,7 @@ Sound :: struct {
     channels: u16;
 	data: *s16;
 };
+
+sound_valid :: inline (sound: Sound) -> bool {
+    return sound.data != null;
+}
