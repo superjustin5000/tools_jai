@@ -2876,6 +2876,8 @@ build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
         layer := it.layers[0];
         
         animation := cast(*Animation)alloc(size_of(Animation));
+        <<animation = Animation.{};
+        
         animation.name = name;
         max_time : s64 = 0;
         min_time := S64_MAX;
@@ -3015,7 +3017,6 @@ build_animations :: (scene: *FBX_Scene, name: string) -> [..]*Animation {
 fbx_load_additional_animations :: (fbx_data: *u8, fbx_data_size: u64, animation_name: string) -> [..]*Animation {
     
     
-    push_allocator(temp);
     scene := fbx_parse_data_into_scene(fbx_data, fbx_data_size);
     
     skeletons, bone_count: = build_skeletons(scene);
@@ -3031,7 +3032,6 @@ fbx_load_additional_animations :: (fbx_data: *u8, fbx_data_size: u64, animation_
 // The meshes, the animations, the skeletons, etc.
 fbx_load :: (fbx_data: *u8, fbx_data_size: u64, model_name: string) -> Model {
     
-    push_allocator(temp);
     scene := fbx_parse_data_into_scene(fbx_data, fbx_data_size);
     
     model: Model = .{};

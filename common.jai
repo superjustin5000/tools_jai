@@ -57,6 +57,7 @@ read_file :: (filename: string) ->File_Result {
 
 
 free_file :: (file_result: File_Result) {
+    if file_result.contents == null return;
     // File reads handled by default allocator. Explained above.
     push_allocator(context.default_allocator);
     free(file_result.contents);

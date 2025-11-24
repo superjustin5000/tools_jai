@@ -1,4 +1,4 @@
-#import "Basic";
+#import "Basic"()(MEMORY_DEBUGGER=true);
 #import "String";
 #import "Sort";
 #import "Math";
@@ -22,7 +22,7 @@
 #import "fbx";
 #import "animation_graph";
 #import "asset_details";
-
+#import "shader";
 
 
 #load "asset_file.jai";
@@ -38,15 +38,16 @@ DESIRED_GLYPHS_ALL :: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU
 // in a single sprite folder.
 
 Assets :: struct {
-    textures:         Table(string, Texture);
     sprites:          Table(string, Sprite);
     sounds:           Table(string, Sound);
     font_sets:        Table(string, Font_Set);
     models:           Table(string, Model);
+    textures:         Table(string, Texture);
     materials:        Table(string, Mesh_Material);
     animations:       Table(string, Animation);
     animation_graphs: Table(string, Animation_Graph);
     asset_details:    Table(string, Asset_Details);
+    shaders:          Table(string, Shader);
     
     by_type: Table(Asset_Type, *void);
 }
@@ -61,6 +62,7 @@ init_assets_by_type :: (using assets: *Assets) {
     table_add(*by_type, Asset_Type.Animation, *animations);
     table_add(*by_type, Asset_Type.Animation_Graph, *animation_graphs);
     table_add(*by_type, Asset_Type.Asset_Details, *asset_details);
+    table_add(*by_type, Asset_Type.Shader, *shaders);
 }
 
 
@@ -225,6 +227,16 @@ main :: () {
                 set_asset_types_to_load(*asset_data, .[.Font]);
                 bundle_file = false;
                 
+            } else if arg == "shader" {
+                if next.count == 0 invalid_code_path("Argument 'shader' found but no name specified.");
+                
+                it += 1;
+                
+                array_add(*asset_data.names, next);
+                
+                set_asset_types_to_load(*asset_data, .[.Shader]);
+                bundle_file = false;
+                
             } else if arg == "no_models" {
                 set_asset_types_to_NOT_load(*asset_data, .[.Model]);
                 
@@ -248,6 +260,9 @@ main :: () {
                 
             } else if arg == "no_fonts" {
                 set_asset_types_to_NOT_load(*asset_data, .[.Font]);
+                
+            } else if arg == "no_shaders" {
+                set_asset_types_to_NOT_load(*asset_data, .[.Shader]);
                 
             } else if arg == "no_singles" {
                 single_files = false;
@@ -285,6 +300,7 @@ gather_files :: (asset_data: *Asset_Data) {
     directory_sprites := "../resources/sprites";
     directory_sounds  := "../resources/sounds";
     directory_fonts   := "../resources/fonts";
+    directory_shaders := "../code/shaders";
     
     should_gather :: (names: []string, name: string) -> bool {
         if names.count == 0 return true;
@@ -354,6 +370,8 @@ gather_files :: (asset_data: *Asset_Data) {
     }
     
     // TODO: Add separate entry for animation types.
+    // Even though right now it seems ok that animations are hard-linked
+    // to models.
     
     if asset_data.asset_types[Asset_Type.Texture] {
         types: = File_Type.[.PNG, .TGA];
@@ -379,6 +397,12 @@ gather_files :: (asset_data: *Asset_Data) {
         for file_infos array_add(*asset_data.files[Asset_Type.Asset_Details], it);
     }
     
+    if asset_data.asset_types[Asset_Type.Shader] {
+        types := File_Type.[.Shader];
+        file_infos := get_file_infos(asset_data.names, types, directory_shaders);
+        for file_infos array_add(*asset_data.files[Asset_Type.Shader], it);
+    }
+    
 }
 
 
@@ -399,7 +423,7 @@ File_Type :: enum {
     Shader; //custom .shader extension.
     OBJ;
     FBX;
-    FBX_Animation_Only;
+    FBX_Animation_Only; // When an fbx is in the form model_name@animation_name.fbx
     MTL;
     Animation_Graph; //custom .animation_graph extension.
     Asset_Details; //custom .asset_details extension.
@@ -409,7 +433,7 @@ File_Type :: enum {
 File_Info :: struct {
     type: File_Type;
     name: string;
-    sub_name: string; // For when files have split names such as 'model_name@animation_name.fbx'
+    sub_name: string; // When the file type is FBX_Animation_Only
     relative_path_and_filename: string;
 }
 
@@ -541,6 +565,7 @@ process_resources :: (asset_data: *Asset_Data) {
     animations:       = *asset_data.assets.animations;
     animation_graphs: = *asset_data.assets.animation_graphs;
     asset_details:    = *asset_data.assets.asset_details;
+    shaders:          = *asset_data.assets.shaders;
     
     
     for asset_types {
@@ -593,6 +618,11 @@ process_resources :: (asset_data: *Asset_Data) {
             } else if type == .Asset_Details {
                 asset_details := load_asset_details(it);
                 add_asset(asset_data, type, it.name, Asset_Details, asset_details);
+                add_asset_track_filename(asset_data, it.name, type, it.relative_path_and_filename);
+                
+            } else if type == .Shader {
+                shader := load_shader(it);
+                add_asset(asset_data, type, it.name, Shader, shader);
                 add_asset_track_filename(asset_data, it.name, type, it.relative_path_and_filename);
                 
             } else if type == .Model {
@@ -1124,6 +1154,25 @@ load_asset_details :: (file: *File_Info) -> Asset_Details {
     }
     
     return Asset_Details.{};
+}
+
+load_shader :: (file: *File_Info) -> Shader {
+    
+    file_result: File_Result = read_file(file.relative_path_and_filename);
+    defer free_file(file_result);
+    
+    if (file_result.content_size) {
+        if (file.type == .Shader) {
+            return shader_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size,
+                               file.name);
+        } else {
+            print("unimplemented shader file type: %\n", file.type);
+        }
+    }
+    else {
+        print("err (conent_size): %\n", file_result.content_size);
+    }
+    return Shader.{};
 }
 
 

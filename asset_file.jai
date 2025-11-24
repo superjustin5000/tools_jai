@@ -75,6 +75,7 @@ SJ_Header :: struct {
     material_count:        u32;
     animation_graph_count: u32;
     asset_details_count:   u32;
+    shader_count:          u32;
 }  
 
 
@@ -218,6 +219,26 @@ SJ_Asset_Details_Info :: struct {
     name:         [128]u8;
     detail_count: u32;
 }
+
+
+SJ_Shader_Input_Info :: struct {
+    semantic_name:  [128]u8;
+    type:           Shader_Input_Type;
+    semantic_index: u16;
+}
+
+SJ_Shader_Input_Layout_Info :: struct {
+    vertex_type: Shader_Vertex_Type;
+    input_count: u8;
+}
+
+SJ_Shader_Info :: struct {
+    name: [128]u8;
+    vert: bool;
+    frag: bool;
+}
+
+
 
 
 
@@ -543,8 +564,8 @@ write_sj_asset_model :: (model: *Model, asset_info: *Asset_Info) -> SJ_Asset_Sin
         }
         
         info.material_count = 0;
-        for mesh.materials {
-            copy_string_to_u8_array(info.material_ids[it_index], it.name);
+        for mesh.material_names {
+            copy_string_to_u8_array(info.material_ids[it_index], it);
             
             info.material_count += 1;
             if info.material_count == 4 break;
@@ -727,6 +748,62 @@ write_sj_asset_material :: (material: *Mesh_Material, asset_info: *Asset_Info) -
 }
 
 
+write_sj_asset_shader :: (shader: *Shader, asset_info: *Asset_Info) -> SJ_Asset_Single_File_Data {
+    
+    file_data:           = SJ_Asset_Single_File_Data.{};
+    file_data.filename   = make_filename(asset_info.id, .Shader);
+    file_data.data_size  = size_of(SJ_Asset_Header) + size_of(SJ_Shader_Info);
+    file_data.data_size += size_of(SJ_Shader_Input_Layout_Info);
+    file_data.data_size += xx (size_of(SJ_Shader_Input_Info) * cast(s64)shader.input_layout.input_count);
+    file_data.data_size += size_of(u32); // code size.
+    file_data.data_size += xx shader.code.count;
+    file_data.data_size += size_of_track_filenames(asset_info);
+    
+    
+    file_data.data = xx alloc(file_data.data_size);
+    data_base     := file_data.data;
+    data          := *data_base;
+    
+    asset_header:= consume_data(data, SJ_Asset_Header);
+    asset_header.type       = .Shader;
+    asset_header.size_bytes = file_data.data_size;
+    copy_string_to_u8_array(asset_header.asset_id, asset_info.id);
+    
+    shader_info := consume_data(data, SJ_Shader_Info);
+    copy_string_to_u8_array(shader_info.name, shader.name);
+    shader_info.vert = shader.vert;
+    shader_info.frag = shader.frag;
+    
+    layout_info := consume_data(data, SJ_Shader_Input_Layout_Info);
+    layout_info.vertex_type = shader.input_layout.vertex_type;
+    layout_info.input_count = shader.input_layout.input_count;
+    
+    if layout_info.input_count > 0 {
+        for 0 .. layout_info.input_count - 1 {
+            input_info: = consume_data(data, SJ_Shader_Input_Info);
+            input:      = shader.input_layout.inputs[it];
+            
+            copy_string_to_u8_array(input_info.semantic_name, input.semantic_name);
+            input_info.type           = input.type;
+            input_info.semantic_index = input.semantic_index;
+        }
+    }
+    
+    code_size := consume_data(data, u32);
+    <<code_size = xx shader.code.count;
+    
+    dst_code := consume_data_size(data, xx shader.code.count);
+    copy_data(dst_code, shader.code.data, xx shader.code.count);
+    
+    asset_header.track_filename_count = xx asset_info.track_filenames.count;
+    write_asset_track_filenames(asset_info.track_filenames, data);
+    
+    assert(data_base - file_data.data == file_data.data_size);
+    
+    return file_data;
+    
+}
+
 
 
 
@@ -737,16 +814,16 @@ write_single_file :: (file_data: *SJ_Asset_Single_File_Data) {
     written := write_file(file_data.filename, file_data.data, file_data.data_size);
 }
 
-free_single_file_data :: (file_data: *SJ_Asset_Single_File_Data) {
-    free(file_data.data);
-    <<file_data = .{};
-}
-
-
 
 
 
 save_final_assets :: (asset_data: *Asset_Data, bundle: bool, single_files: bool) -> SJ_Asset_File_Datas {
+    
+    
+    leak_report := make_leak_report();
+    for leak_report.sorted_summaries print("** summary %: **\n%\n", it_index, <<it);
+    log_leak_report(leak_report);
+    
     
     print("preparing save\n");
     
@@ -761,6 +838,7 @@ save_final_assets :: (asset_data: *Asset_Data, bundle: bool, single_files: bool)
     size_of_sprites:          u32;
     size_of_sounds:           u32;
     size_of_fonts:            u32;
+    size_of_shaders:          u32;
     
     using asset_data;
     
@@ -833,6 +911,15 @@ save_final_assets :: (asset_data: *Asset_Data, bundle: bool, single_files: bool)
     }
     
     
+    for * assets.shaders {
+        info := table_find_pointer(*asset_infos[Asset_Type.Shader], it_index);
+        file_data := write_sj_asset_shader(it, info);
+        if single_files write_single_file(*file_data);
+        size_of_shaders += file_data.data_size;
+        array_add(*file_datas.datas[Asset_Type.Shader], file_data);
+    }
+    
+    
     
     total_size:u32 = 
         size_of(SJ_Header) + 
@@ -843,7 +930,8 @@ save_final_assets :: (asset_data: *Asset_Data, bundle: bool, single_files: bool)
         size_of_textures + 
         size_of_animation_graphs + 
         size_of_asset_details +
-        size_of_materials;
+        size_of_materials + 
+        size_of_shaders;
     
     
     if bundle {
@@ -862,7 +950,7 @@ save_final_assets :: (asset_data: *Asset_Data, bundle: bool, single_files: bool)
         header.material_count        = 0;
         header.animation_graph_count = 0;
         header.asset_details_count   = 0;
-        
+        header.shader_count          = 0;
         
         // NOTE: Write data in depedency order.
         
@@ -941,7 +1029,17 @@ save_final_assets :: (asset_data: *Asset_Data, bundle: bool, single_files: bool)
             
         }
         
-        asset_bundle_filename := "../resources/asset_bundle_0_2_0.sj5k";
+        for data: file_datas.datas[Asset_Type.Shader] {
+            if data.data_size == 0 continue;
+            shader_data := consume_data_size(*bundle_data, data.data_size);
+            copy_data(shader_data, data.data, data.data_size);
+            
+            header.shader_count += 1;
+            header.asset_count  += 1;
+            
+        }
+        
+        asset_bundle_filename := "../resources/asset_bundle_0_3_0.sj5k";
         delete_file(asset_bundle_filename);
         written := write_file(asset_bundle_filename, cast(*void)bundle_data_start, total_size);
         

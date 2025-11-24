@@ -450,6 +450,26 @@ quaternion :: (euler: V3) -> Quat {
     return q;
 }
 
+quaternion_from_turns :: (turns: V3) -> Quat {
+    q := Quat.{};
+    
+    rads := turns * TAU;
+    
+    cx : f32 = xx cos(rads.x * 0.5);
+    sx : f32 = xx sin(rads.x * 0.5);
+    cy : f32 = xx cos(rads.y * 0.5);
+    sy : f32 = xx sin(rads.y * 0.5);
+    cz : f32 = xx cos(rads.z * 0.5);
+    sz : f32 = xx sin(rads.z * 0.5);
+    
+    q.s   = (cx * cy * cz) + (sx * sy * sz);
+    q.v.x = (sx * cy * cz) - (cx * sy * sz);
+    q.v.y = (cx * sy * cz) + (sx * cy * sz);
+    q.v.z = (cx * cy * sz) - (sx * sy * cz);
+    
+    return q;
+}
+
 
 length2 :: (q: Quat) -> f32 {
     result := q.s * q.s + q.v.x * q.v.x + q.v.y * q.v.y + q.v.z * q.v.z;

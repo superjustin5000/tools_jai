@@ -131,7 +131,7 @@ asset_details_load :: (file_data: *u8, file_data_size: u64, name: string) -> Ass
     for details.details {
         if it.type == .Rotation {
             rotation := V3.{x=it.x,y=it.y,z=it.z};
-            r_matrix = rotation_matrix(quaternion(rotation));
+            r_matrix = rotation_matrix(quaternion_from_turns(rotation));
             has_xform = true;
             
         } else if it.type == .Scale {

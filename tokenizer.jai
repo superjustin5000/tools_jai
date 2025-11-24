@@ -340,6 +340,12 @@ set_data_to_tokenize::(tokenizer: *Tokenizer, data: *u8, data_size: s64) {
     tokenizer.remaining = data_size;
 }
 
+set_string_to_tokenize :: (tokenizer: *Tokenizer, s: string) {
+    tokenizer.at_data   = s.data;
+    tokenizer.at        = <<tokenizer.at_data;
+    tokenizer.remaining = s.count;
+}
+
 tokenize::(tokenizer: *Tokenizer) {
     assert(tokenizer.at_data != null, "tokenizer data is null, call 'set_data_to_tokenize' first with a valid point to the data");
     
