@@ -48,8 +48,8 @@ parse_face_vertex :: (_line: string) -> (s32, s32, s32) {
 
 
 
-parse_line :: (_line: string, mesh: *Mesh) {
-    if _line.count == 0 return;
+parse_line :: (_line: string, mesh: *Mesh, v_offset: s64, vt_offset: s64, vn_offset: s64) -> bool {
+    if _line.count == 0 return false;
     
     line := _line;
     line = trim(line);
@@ -58,8 +58,9 @@ parse_line :: (_line: string, mesh: *Mesh) {
     
     if equal(left, "o") {
         if mesh.name.count > 0 {
-            print("Currently we only support a single object per obj file.");
-            assert(false);
+            // tells the caller that this is the beginning of a new
+            // mesh in the obj file.
+            return true;
         }
         
         mesh.name = right;
@@ -135,27 +136,31 @@ parse_line :: (_line: string, mesh: *Mesh) {
         
         found, left, right: = split_from_left(line, " ");
         v,t,n := parse_face_vertex(left);
-        triangle.v1.vertex_index = v;
-        triangle.v1.uv_index     = t;
-        triangle.v1.normal_index = n;
+        triangle.v1.vertex_index = v - xx v_offset;
+        triangle.v1.uv_index     = t - xx vt_offset;
+        triangle.v1.normal_index = n - xx vn_offset;
         found, left, right = split_from_left(right, " ");
         v,t,n  = parse_face_vertex(left);
-        triangle.v2.vertex_index = v;
-        triangle.v2.uv_index     = t;
-        triangle.v2.normal_index = n;
+        triangle.v2.vertex_index = v - xx v_offset;
+        triangle.v2.uv_index     = t - xx vt_offset;
+        triangle.v2.normal_index = n - xx vn_offset;
         v,t,n  = parse_face_vertex(right);
-        triangle.v3.vertex_index = v;
-        triangle.v3.uv_index     = t;
-        triangle.v3.normal_index = n;
+        triangle.v3.vertex_index = v - xx v_offset;
+        triangle.v3.uv_index     = t - xx vt_offset;
+        triangle.v3.normal_index = n - xx vn_offset;
         
         mesh_triangle_fix_winding_order(mesh, *triangle);
         
         array_add(*mesh.triangles, triangle);
         
     } else {
-        
+        print("obj.jai, parse_line: ignoring line beginning with '%'\n", left);
     }
+    
+    return false;
 }
+
+
 
 
 
@@ -164,6 +169,10 @@ obj_load :: (data: *u8, data_size: u64) -> Model {
     model: Model = .{};
     mesh := cast(*Mesh)alloc(size_of(Mesh));
     <<mesh = .{};
+    
+    vertex_offset: = 0;
+    uv_offset:     = 0;
+    normal_offset: = 0;
     
     
     line_builder: String_Builder = .{};
@@ -180,7 +189,21 @@ obj_load :: (data: *u8, data_size: u64) -> Model {
         }
         
         line:string = builder_to_string(*line_builder);
-        parse_line(line, mesh);
+        new_mesh := parse_line(line, mesh, vertex_offset, uv_offset, normal_offset);
+        
+        if new_mesh {
+            array_add(*model.meshes, mesh);
+            
+            
+            vertex_offset += mesh.vertices.count;
+            uv_offset     += mesh.uvs.count;
+            normal_offset += mesh.normals.count;
+            
+            mesh = cast(*Mesh)alloc(size_of(Mesh));
+            <<mesh = .{};
+            // have to call this again to get the name.
+            parse_line(line, mesh, vertex_offset, uv_offset, normal_offset); 
+        }
         
         if size == 0 break;
     }
@@ -218,7 +241,7 @@ mtl_parse_color_line :: (_line: string) -> Color {
 }
 
 
-mtl_parse_line :: (_line: string, mat: *Mesh_Material) {
+mtl_parse_line :: (_line: string, mat: *Mesh_Material) -> bool {
     
     line := _line;
     line = trim(line);
@@ -229,6 +252,9 @@ mtl_parse_line :: (_line: string, mat: *Mesh_Material) {
         right = trim(right);
         
         if equal(left, "newmtl") {
+            if mat.name.count > 0 {
+                return true; 
+            }
             mat.name = right;
         } else if equal(left, "Ka") {
             mat.ambient_color = mtl_parse_color_line(right);
@@ -266,16 +292,16 @@ mtl_parse_line :: (_line: string, mat: *Mesh_Material) {
     // Here is a full spec of MTL file:
     // https://paulbourke.net/dataformats/mtl/
     
+    return false;
+    
 }
 
 
 
 
-// TODO: Should return multiple materials.
-// With the name being filename_matname.
-// Then the obj can save material names the same way,
-// and that's how they'll be linked up.
-mtl_load :: (data: *u8, data_size: u64) -> Mesh_Material {
+mtl_load :: (data: *u8, data_size: u64) -> []Mesh_Material {
+    
+    materials: [..]Mesh_Material;
     
     mat: Mesh_Material = .{};
     line_builder: String_Builder = .{};
@@ -293,12 +319,19 @@ mtl_load :: (data: *u8, data_size: u64) -> Mesh_Material {
         
         line:string = builder_to_string(*line_builder);
         
-        mtl_parse_line(line, *mat);
+        new_mtl := mtl_parse_line(line, *mat);
+        if new_mtl {
+            array_add(*materials, mat);
+            mat = Mesh_Material.{};
+            mtl_parse_line(line, *mat);
+        }
         
         if size == 0 break;
     }
     
-    return mat;
+    array_add(*materials, mat);
+    
+    return materials;
 }
 
 

@@ -191,7 +191,7 @@ Meta_Prop_Flags :: enum_flags u32 {
     Text_Lg;
     Inline_Props;
     Serialize_Pointer_Value;
-    Flag_9;
+    Dynamic_Array;
     Flag_10;
     Flag_11;
     Flag_12;
@@ -635,6 +635,12 @@ generate_meta_struct_props :: (proc: *Process, tokenizer: *Tokenizer, prop_token
                 }
             }
             
+            else if token.name == "meta_dynamic_array" {
+                for *prop : prop_list.props {
+                    prop.flags |= .Dynamic_Array;
+                }
+            }
+            
             else if token.name == "meta_condition" {
                 
                 condition.valid = true;
@@ -849,15 +855,16 @@ generate_meta_type_array :: (proc: *Process, meta_builder: *String_Builder) {
     
     append(meta_builder, "};\n");
     
-    
+    append(meta_builder, "#define GET_META_TYPE_FUNC(__name) Meta_Type *__name()\n");
+    append(meta_builder, "typedef GET_META_TYPE_FUNC(get_meta_type);\n");
     
     for name: type_names {
-        append(meta_builder, sprint("Meta_Type *meta_type__% = meta_types + %;\n", name, it_index));
+        append(meta_builder, sprint("GET_META_TYPE_FUNC(meta_type__%) { return meta_types + %; }\n", name, it_index));
     }
     
     for meta_struct : proc.structs {
         struct_type_index := type_names.count + it_index;
-        append(meta_builder, sprint("Meta_Type *meta_type__% = meta_types + %;\n", meta_struct.name, struct_type_index));
+        append(meta_builder, sprint("GET_META_TYPE_FUNC(meta_type__%) { return meta_types + %; }\n", meta_struct.name, struct_type_index));
     }
     
     
@@ -895,6 +902,7 @@ main :: () {
     array_add(*filenames, "../code/types.h");
     array_add(*filenames, "../code/model.h");
     array_add(*filenames, "../code/game_undo.h");
+    array_add(*filenames, "../code/debug.h");
     
     
     proc := New(Process);

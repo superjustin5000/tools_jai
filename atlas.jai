@@ -6,16 +6,16 @@
 
 
 Atlas_Builder :: struct {
-    texture: Texture;
+    texture:      Texture;
     root_section: Atlas_Section;
 }
 
 Atlas_Section :: struct {
-    occupied : bool;
+    occupied:      bool;
     width, height: u16;
-    x,y :u16;
-    larger: *Atlas_Section;
-    smaller: *Atlas_Section;
+    x,y:           u16;
+    larger:        *Atlas_Section;
+    smaller:       *Atlas_Section;
 }
 
 

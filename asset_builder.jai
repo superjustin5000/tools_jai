@@ -601,9 +601,13 @@ process_resources :: (asset_data: *Asset_Data) {
                 add_asset_track_filename(asset_data, it.name, type, it.relative_path_and_filename);
                 
             } else if type == .Material {
-                material := load_material(it);
-                add_asset(asset_data, type, it.name, Mesh_Material, material);
-                add_asset_track_filename(asset_data, it.name, type, it.relative_path_and_filename);
+                material_asset_name: = it.name;
+                material_file:       = it.relative_path_and_filename;
+                materials:           = load_materials(it);
+                for *mat : materials {
+                    add_asset(asset_data, type, mat.name, Mesh_Material, mat);
+                    add_asset_track_filename(asset_data, mat.name, type, material_file);
+                }
                 
             } else if type == .Texture {
                 texture := load_texture(it);
@@ -1018,15 +1022,15 @@ load_model :: (file: *File_Info) -> Model {
     return model;
 }
 
-load_material :: (file: *File_Info) -> Mesh_Material {
+load_materials :: (file: *File_Info) -> []Mesh_Material {
     
     file_result: File_Result = read_file(file.relative_path_and_filename);
     defer free_file(file_result);
     
     if (file_result.content_size) {
         if (file.type == .MTL) {
-            material := mtl_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size);
-            return material;
+            materials := mtl_load(cast(*u8)file_result.contents, cast(u64)file_result.content_size);
+            return materials;
         }
         else {
             print("unimplemented material file type: %\n", file.type);
@@ -1036,7 +1040,8 @@ load_material :: (file: *File_Info) -> Mesh_Material {
         print("err (conent_size): %\n", file_result.content_size);
     }
     
-    return Mesh_Material.{};
+    empty_array : [..]Mesh_Material;
+    return empty_array;
 }
 
 
